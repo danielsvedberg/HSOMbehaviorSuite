@@ -119,7 +119,6 @@
 	Behavioral Events:
 		-  Lick                 (event marker = 8)
 		-  Reward dispensed     (event marker = 9)
-		-  Quinine dispensed    (event marker = 10)
 		-  Waiting for ITI      (event marker = 11)   - enters this state if trial aborted by behavioral error, House lamps ON
 		-  Correct Lick         (event marker = 12)   - first correct lick in the window
     -  1st Lick             (event marker = 16)   - first relevant lick in trial
@@ -162,17 +161,10 @@
 		11: RANDOM_DELAY_MAX    Maximum random pre-Cue delay (ms)
 		12: CUE_DURATION        Duration of the cue tone and LED flash (ms)
 		13: REWARD_DURATION     Duration of reward dispensal (ms)
-		14: QUININE_DURATION    Duration of quinine dispensal (ms)
-		15: QUININE_TIMEOUT     Minimum time between quinine deterrants (ms)
-		16: QUININE_MIN         Minimum time after cue before quinine available (ms)
-		17: QUININE_MAX         Maximum time after cue before quinine turns off (ms)
-		18: SHOCK_ON            1 to connect tube shock circuit
-		19: SHOCK_MIN           Miminum time after cue before shock connected (ms)
-		20: SHOCK_MAX           Maxumum time after cue before shock disconnected (ms)
 		21: EARLY_LICK_ABORT    1 to abort trial with early lick
 		22: ABORT_MIN           Minimum time after cue before early lick aborts trial (ms)
 		23: ABORT_MAX           Maximum time after cue when abort available (ms)
-		24: PERCENT_PAVLOVIAN   Percent of mixed trials that should be pavlovian (decimal)
+		24: P_PAVLOVIAN   Percent of mixed trials that should be pavlovian (decimal)
 		25: P_STIM_UNCONDITIONAL % of trials (0-1) to stimulate with CHRIMSON
 		26: CHRIMSON_STIM_TIME      0 ms for at cue, -time for lights-off, in ms wrt cue
 
@@ -226,16 +218,17 @@ Available pins for 3.4: 4-11 20-23
 *****************************************************/
 
 // Digital OUT
-#define PIN_HOUSE_LAMP     23// others 6// ephys room 0   // House Lamp Pin         6 (DUE = 34)  (MEGA = 34)  (UNO = 5?)  (TEENSY = 6)	(TEENSY3.4 6)
-#define PIN_LED_CUE        22//others 4// ephys room 7   // Cue LED Pin            4 (DUE = 35)  (MEGA = 28)  (UNO =  4)  (TEENSY = 4)	(TEENSY3.4 4)
-#define PIN_REWARD         24//other rooms 7 // ephys room 2   // Reward Pin             7 (DUE = 37)  (MEGA = 52)  (UNO =  7)  (TEENSY = 7)	(TEENSY3.4 7)
-#define PIN_REWARD_ECHO    12 // reward echo?
-#define PIN_3_3            6// other rooms 11// ephys room 16  // 3.3V src 													 11 (TEENSY = 11) (TEENSY3.4 11)
-#define PIN_IR_HOUSE	   0 // other rooms 0// ephys room 15   // IR Houselamp for camera 									 0 (TEENSY = 0)	(TEENSY3.4 20)
-#define PIN_LICK_ECHO	    21 // ephys room NC   // lick echo 
-#define PIN_CHRIMSON           7 // other rooms 10// ephys room 8  // Trigger 2nd Arduino for CHRIMSON stim 						 10 (TEENSY = 10) (TEENSY3.4 10)
-#define PIN_FIRST_LICK	   50 // other rooms 12// ephys room 9  // Sends receipt of first lick -- used to halt stimulation 	 12 (TEENSY = 12)	(TEENSY3.4 ?)
-#define PIN_CANCEL_CHRIMSON	   20 // other rooms 1// ephys room 10   // Halt stimulation 	  										 1 (TEENSY = 1)	(TEENSY3.4 21)
+#define PIN_HOUSE_LAMP          23// others 6// ephys room 0   // House Lamp Pin         6 (DUE = 34)  (MEGA = 34)  (UNO = 5?)  (TEENSY = 6)	(TEENSY3.4 6)
+#define PIN_LED_CUE             22//others 4// ephys room 7   // Cue LED Pin            4 (DUE = 35)  (MEGA = 28)  (UNO =  4)  (TEENSY = 4)	(TEENSY3.4 4)
+#define PIN_REWARD              24//other rooms 7 // ephys room 2   // Reward Pin             7 (DUE = 37)  (MEGA = 52)  (UNO =  7)  (TEENSY = 7)	(TEENSY3.4 7)
+#define PIN_REWARD_ECHO         12 // reward echo?
+#define PIN_IR_LED_TRIGGER       9 // other rooms 9// ephys room 3   // IR LED Trigger Pin 										 9 (TEENSY = 9)	(TEENSY3.4 9)
+#define PIN_3_3                  6// other rooms 11// ephys room 16  // 3.3V src 													 11 (TEENSY = 11) (TEENSY3.4 11)
+#define PIN_IR_HOUSE	           0 // other rooms 0// ephys room 15   // IR Houselamp for camera 									 0 (TEENSY = 0)	(TEENSY3.4 20)
+#define PIN_LICK_ECHO	          21 // ephys room NC   // lick echo 
+#define PIN_CHRIMSON            25 // other rooms 10// ephys room 8  // Trigger 2nd Arduino for CHRIMSON stim 						 10 (TEENSY = 10) (TEENSY3.4 10)
+#define PIN_FIRST_LICK	        50 // other rooms 12// ephys room 9  // Sends receipt of first lick -- used to halt stimulation 	 12 (TEENSY = 12)	(TEENSY3.4 ?)
+#define PIN_CANCEL_CHRIMSON	    12 // other rooms 1// ephys room 10   // Halt stimulation 	  										 1 (TEENSY = 1)	(TEENSY3.4 21)
 
 // PWM OUT --- n.b! 2 tones can't play at the same time!
 #define PIN_SPEAKER        4//others 5// ephys room 6   	// 5Speaker Pin           5 (DUE =  2)  (MEGA =  8)  (UNO =  9) (TEENSY = 5)	(TEENSY3.4 5)
@@ -244,12 +237,6 @@ Available pins for 3.4: 4-11 20-23
 #define PIN_CAMO           31//others 16 // ephys room 4
 #define PIN_LICK           5//others 2// ephys room 5    // 6Lick Pin              2 (DUE = 36)  (MEGA =  2)  (UNO =  2)  (TEENSY = 2)	(TEENSY3.4 22)
 #define PIN_RECEIPT        56//others 8// ephys room 1  	// Confirms Optogenetics Command Received 					 8  (TEENSY = 8)	(TEENSY3.4 8)
-
-
-// Ephys
-#define PIN_ALICK_OUT	   17   // Sends analog lick receipt to CED/Ripple/Intan 			3   (TEENSY = 3)  (TEENSY3.4 3)
-// Analog IN
-#define PIN_LICK_ACC       18   // Accelerometer-Based Lick Pin    (23 is A9 on 3.6)  		   (TEENSY = A0) (TEENSY3.4 23)
 
 /*****************************************************
 Enums - DEFINE States
@@ -308,7 +295,6 @@ enum EventMarkers
 	EVENT_ITI,              // Enter ITI
 	EVENT_LICK,             // Lick detected
 	EVENT_REWARD,           // Reward dispensed
-	EVENT_QUININE,          // Quinine dispensed
 	EVENT_ABORT,            // Abort (behavioral error)
 	EVENT_CORRECT_LICK,     // Marks the "Peak" Lick (First within window)
 	EVENT_PAVLOVIAN,        // Marks trial as Pavlovian
@@ -335,7 +321,6 @@ static const char *_eventMarkerNames[] =    // * to define array of strings
 	"ITI",
 	"LICK",
 	"REWARD",
-	"QUININE",
 	"ABORT",
 	"CORRECT_LICK",
 	"PAVLOVIAN",
@@ -382,8 +367,11 @@ enum SoundEventFrequencyEnum
 {
 	TONE_REWARD  = 5050,             // Correct tone: (prev C8 = 4186)
 	TONE_ABORT   = 440,              // Error tone: (prev C3 = 131)
-	TONE_LATE	 = 132,				 // late tone -- QD
+	TONE_LATE	 = 132,				         // late tone -- QD
 	TONE_CUE     = 3300,             // 'Start counting the interval' cue: (prev C6 = 1047)
+  TONE_NO_LICK   = 131,              // no lick sound
+  TONE_TRIGGER = 12345             // A brief pulse of this frequency marks when Arduino starts to match Arduino start time
+
 };
 
 /*****************************************************
@@ -393,8 +381,6 @@ Parameters that can be updated by HOST
 enum ParamID
 {
 	_DEBUG,                         // (Private) 1 to enable debug messages from HOST. Default 0.
-	ANALOG_LICK,					// Analog lick ckt mode - 0 or 1
-	A_LICK_THRESH,					// Analog lick ckt threshold [0, 1023]
 	HYBRID,                         // 1 to overrule pav or op -- allows operant pre-target lick, but is otherwise pavlovian
 	PAVLOVIAN,                      // 1 to enable Pavlovian Mode
 	OPERANT,                        // 1 to enable Operant Mode (exclusive to PAVLOVIAN)
@@ -411,7 +397,8 @@ enum ParamID
 	EARLY_LICK_ABORT,               // 1 to Abort with Early Licks in window (ms)
 	ABORT_MIN,                      // Miminum time post cue before lick causes abort (ms)
 	ABORT_MAX,                      // Maximum time post cue before abort unavailable (ms)
-	P_STIM_UNCONDITIONAL,			// Percent of trials to stimulate CHRIMSON (0-100)
+	P_PAVLOVIAN,                   // Percent of Trials to be pavlovian
+  P_STIM_UNCONDITIONAL,			// Percent of trials to stimulate CHRIMSON (0-100)
 	CHRIMSON_STIM_TIME,					// Time to begin stimulation
 	P_STIM_I_NOLICK,				// Probability of stim conditioned on having reached a longer time
 	STIM_CANCEL_ON_REW,				// 1 if you want stimulation to be ignored on a rewarded trial
@@ -429,8 +416,6 @@ enum ParamID
 static const char *_paramNames[] = 
 {
 	"_DEBUG",
-	"ANALOG_LICK",
-	"A_LICK_THRESH",
 	"HYBRID",
 	"PAVLOVIAN",
 	"OPERANT",
@@ -444,17 +429,10 @@ static const char *_paramNames[] =
 	"RANDOM_DELAY_MAX",
 	"CUE_DURATION",
 	"REWARD_DURATION",
-	"QUININE_DURATION",
-	"QUININE_TIMEOUT",
-	"QUININE_MIN",
-	"QUININE_MAX",
-	"SHOCK_ON",
-	"SHOCK_MIN",
-	"SHOCK_MAX",
 	"EARLY_LICK_ABORT",
 	"ABORT_MIN",
 	"ABORT_MAX",
-	"PERCENT_PAVLOVIAN",
+	"P_PAVLOVIAN",
 	"P_STIM_UNCONDITIONAL",
 	"CHRIMSON_STIM_TIME",
 	"P_STIM_I_NOLICK",
@@ -471,8 +449,6 @@ static const char *_paramNames[] =
 int _params[_NUM_PARAMS] = 
 {
 	0,                              // _DEBUG
-	0,                              // ANALOG LICK CKT MODE
-	512,							// A_LICK_THRESH
 	1,                              // HYBRID
 	0,                              // PAVLOVIAN
 	0,                              // OPERANT
@@ -485,28 +461,21 @@ int _params[_NUM_PARAMS] =
 	400,                            // RANDOM_DELAY_MIN
 	1500,                           // RANDOM_DELAY_MAX
 	100,                            // CUE_DURATION
-	40,                            // REWARD_DURATION
-	0,                              // QUININE_DURATION
-	0,                            	// QUININE_TIMEOUT
-	0,                              // QUININE_MIN
-	0,                              // QUININE_MAX
-	0,                              // SHOCK_ON
-	0,                              // SHOCK_MIN
-	0,                              // SHOCK_MAX
+	40,                             // REWARD_DURATION
 	1,                              // EARLY_LICK_ABORT
 	0,                            	// ABORT_MIN ** use 500 for beginner task
 	3333,                           // ABORT_MAX
-	0,                              // PERCENT_PAVLOVIAN
+	0,                              // P_PAVLOVIAN
 	0,                              // P_STIM_UNCONDITIONAL
-	0,								// CHRIMSON_STIM_TIME -- set to 17001 and connect cue to cancel pin if you want to stim LOI
-	0,								// P_STIM_I_NOLICK
-	0,								// STIM_CANCEL_ON_REW -- for protocol A
-	0,								// STIM_CANCEL_EOT -- for protocol A
-	0,								// STIM_CANCEL_FLICK -- for protocol A
-	0,								// STIM_CANCEL_LICK_WIN_STIM
-	0,								// P_STIM_ON_FLICK
-	0,								// IF_FLICKSTIM_EARLY1_REW2_ALL0
-	0 								// P_JUICE_HI_OR_LOW
+	0,								              // CHRIMSON_STIM_TIME -- set to 17001 and connect cue to cancel pin if you want to stim LOI
+	0,								              // P_STIM_I_NOLICK
+	0,								              // STIM_CANCEL_ON_REW -- for protocol A
+	0,								              // STIM_CANCEL_EOT -- for protocol A
+	0,								              // STIM_CANCEL_FLICK -- for protocol A
+	0,								              // STIM_CANCEL_LICK_WIN_STIM
+	0,								              // P_STIM_ON_FLICK
+	0,								              // IF_FLICKSTIM_EARLY1_REW2_ALL0
+	0 								              // P_JUICE_HI_OR_LOW
 };
 
 /*****************************************************
@@ -532,12 +501,10 @@ static long _lick_time               = 0;        // Tracks most recent lick time
 static long _cue_on_time             = 0;        // Tracks time cue has been displayed for
 static long _response_window_timer   = 0;        // Tracks time in response window state
 static long _reward_timer            = 0;        // Tracks time in reward state
-static long _quinine_timer           = 0;        // Tracks time since last quinine delivery
 static long _abort_timer             = 0;        // Tracks time in abort state
 static long _ITI_timer               = 0;        // Tracks time in ITI state
 static long _preCueDelay             = 0;        // Initialize _preCueDelay var
 static bool _reward_dispensed_complete = false;  // init tracker of reward dispensal
-static bool _shock_trigger_on        = false;    // Shock trigger default is off
 static long _dice_roll               = 0;        // Randomly select if trial will be pav or op
 static bool _mixed_is_pavlovian      = true;     // Track if current mixed trial is pavlovian
 static bool _first_lick_received     = false;    // Track if first lick received for a trial
@@ -547,9 +514,7 @@ static bool _trial_is_stimulated     = false;    // Track if trial is stimulated
 static bool _stimulation_requested   = false;	 // Track if stim requested
 static bool	_CHRIMSON_receipt_received   = false;	 // Clear receipt
 static bool	_need2check_non_zero_CHRIMSON   = false; // Track if user wants to stimulate at a time other than zero
-static bool _analog_lick_mode		 = false;	 // Check if user wants to use analog lick mode
 static bool _CHRIMSON_cancelled 		 = false;    // Track if CHRIMSON request has been cancelled
-static unsigned int _filtered_read	 = 0;		 // Keep track of the analog read
 static unsigned int _reward_duration_this_trial = 35; // Sets the reward duration of the current trial and hangs onto it
 
 
@@ -570,7 +535,6 @@ void setup()
   // Adding reward echo here - NH
   pinMode(PIN_REWARD_ECHO, OUTPUT);
   pinMode(PIN_CHRIMSON, OUTPUT);				    // Trigger for CHRIMSON Program
-  pinMode(PIN_ALICK_OUT, OUTPUT);				// Send analog lick receipt as digital pulse to recording device
   pinMode(PIN_FIRST_LICK, OUTPUT);			// Send first lick pulse to optocontroller
   pinMode(PIN_CANCEL_CHRIMSON, OUTPUT);			// Cancel CHRIMSON request
 	// INPUTS
@@ -578,8 +542,6 @@ void setup()
 	pinMode(PIN_RECEIPT, INPUT);				// Confirms Optogenetics Controller received command, used for event marker
 	pinMode(PIN_CAMO, INPUT);					// Simply relays CamO to CED
 
-	// ANALOGS
-	pinMode(PIN_LICK_ACC, INPUT);
 	//--------------------------------------------------------//
 
 
@@ -688,7 +650,6 @@ void mySetup()
 	setTriggerLED(true);						 // Trigger LED begins in ON config - camera detects falling edge
   digitalWrite(PIN_3_3, HIGH);				 // IR Trigger Reset
   // digitalWrite(PIN_IR_HOUSE, HIGH);			 // Houselamp Always On
-  digitalWrite(PIN_ALICK_OUT, LOW);			 // Initialize A/D lick pulse tracker to low
   digitalWrite(PIN_FIRST_LICK, LOW);			 // Initialize first lick tracker to low
   setCHRIMSONTrigger(false);					     // Turn off CHRIMSON trigger
   cancelCHRIMSON(false);							 // Reset Cancellation Trigger
@@ -717,7 +678,6 @@ void mySetup()
 	_ITI_timer              	= 0;        // Tracks time in ITI state
 	_preCueDelay            	= 0;        // Initialize _preCueDelay var
 	_reward_dispensed_complete  = false;    // init tracker of reward dispensal
-	_shock_trigger_on       	= false;    // Shock trigger default is off
 	_dice_roll       			= 0;        // Randomly select if trial will be pav or op
 	_mixed_is_pavlovian     	= true;     // Track if current mixed trial is pavlovian
   	_first_lick_received        = false;    // Reset first lick detector
@@ -725,7 +685,6 @@ void mySetup()
 	_stimulation_requested      = false;    // Track if stim command issued
 	_CHRIMSON_receipt_received      = false;	// Clear receipt
 	_need2check_non_zero_CHRIMSON   = false;	// Track if user wants to stimulate at a time other than zero
-	_analog_lick_mode   		= false;	// Track if user wants use accelerometer-based lick ckt
 	_f_stimwindow_lick_received = true;		// Track if first lick within stimulated window has been received -- inits as true because when stim req, it resets
 	_reward_duration_this_trial = 35;		// Set reward duration on this trial
 
@@ -766,13 +725,13 @@ void idle_state() {
 		setHouseLamp(true);                              // Turn House Lamp ON
 		setCueLED(false);                                // Kill Cue LED
 		noTone(PIN_SPEAKER);                             // Kill tone
-		setShockTrigger(false);                          // Kill shock ckt
 		setReward(false);                                // Kill reward
 		setTriggerLED(true);							 // Reset Trigger IR LED
 		setCHRIMSONTrigger(false);							 // Kill CHRIMSON trigger
 		digitalWrite(PIN_FIRST_LICK, LOW);				 // Kill first lick pin
 		cancelCHRIMSON(false);								 // Reset cancellation trigger
-		// Reset state variables
+		
+    // Reset state variables
 		_pre_window_elapsed = false;                 	 // Reset pre_window time tracker
 		_reached_target = false;                     	 // Reset target time tracker
 		_late_lick_detected = false;                  	 // Reset late lick detector
@@ -797,13 +756,6 @@ void idle_state() {
 		TRANSITION LIST -- checks conditions, moves to next state
 	~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
-	if (_params[ANALOG_LICK]) {
-		_analog_lick_mode = true;
-		(void)getLickState();
-	}
-	else {_analog_lick_mode = false;}
-
-	
 	if (_command == 'G') {                           // If Received GO signal from HOST ---transition to---> READY
     // Send Trigger Signal to the CED/NiDAQ:
 		// Note, in new version this turns IR LED to OFF state
@@ -812,7 +764,6 @@ void idle_state() {
 		_state = INIT_TRIAL;                              // State set to INIT_TRIAL
 		return;                                           // Exit function
 	}
-
 	
 	if (_command == 'P') {                           // Received new param from host: format "P _paramID _newValue" ('P' for Parameters)
 		//----------------------DEBUG MODE------------------------// 
@@ -841,11 +792,10 @@ void init_trial() {
 		_first_lick_received = false;                 	 // Reset tracker of first licks
 		digitalWrite(PIN_FIRST_LICK, LOW);
 		cancelCHRIMSON(false);								// Reset CHRIMSON cancellation pin and tracker
-		// if (_params[_DEBUG]) {sendMessage("CHRIMSON stim time = " + String(_params[CHRIMSON_STIM_TIME]));}
 		/*---------Decide Pav vs Op for mixed trials before starting the trial:---------*/
 		if (_params[OPERANT] == 1 && _params[PAVLOVIAN] == 1 && _params[HYBRID] == 0)  {
 			_dice_roll = random(1,100);                   // Random # between 1-100
-			if (_dice_roll <= _params[PERCENT_PAVLOVIAN]) {             // If dice_roll <= the percent of trials that should be pavlovian
+			if (_dice_roll <= _params[P_PAVLOVIAN]) {             // If dice_roll <= the percent of trials that should be pavlovian
 				_mixed_is_pavlovian = true;                                 // Set this trial to pavlovian
 				// Send event marker (pavlovian trial) to HOST with timestamp
 				sendMessage("&" + String(EVENT_PAVLOVIAN) + " " + String(signedMillis() - _exp_timer));
@@ -925,8 +875,8 @@ void init_trial() {
 	if (checkQuit()) {
 		return;
 	}
-	
-	checkLick();
+		
+    checkLick();
 
 	if (_CHRIMSON_trigger_on && getCHRIMSONStimReceipt() && !_CHRIMSON_receipt_received) {	 // If received receipt of trigger
 		setCHRIMSONTrigger(false);							// Turn off the trigger
@@ -972,7 +922,6 @@ void pre_window() {
 	if (checkQuit()) {return;}
 	if (checkLick()) {return;}
 	checkCHRIMSONStim();
-	checkShock();
 
 	if (signedMillis() - _cue_on_time >= _params[CUE_DURATION]) {// Time to turn off Cue
 		setCueLED(false);                                   // Turn Cue LED OFF
@@ -1025,7 +974,6 @@ void response_window() {
 		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 		if (checkQuit()) {return;}
 		if (checkLick()) {return;}
-		checkShock();
 		checkCHRIMSONStim();
 
 		long current_time = signedMillis() - _cue_on_time; //****Changed to be wrt cue onset (not total trial time)
@@ -1045,7 +993,7 @@ void response_window() {
 
 		if (current_time >= _params[INTERVAL_MAX]) {     // Window Closed -> IDLE_STATE **** NEVER SHOULD HAPPEN FOR PAVLOVIAN!
 			setHouseLamp(true);                               // House Lamp ON (to indicate error)
-			playSound(TONE_ALERT);
+      playSound(TONE_NO_LICK);
 			// Send event marker (window closed) to HOST with timestamp
 			sendMessage("&" + String(EVENT_WINDOW_CLOSED) + " " + String(signedMillis() - _exp_timer));
 			//------------------------DEBUG MODE--------------------------//  
@@ -1085,7 +1033,6 @@ void response_window() {
 			~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 			if (checkQuit()) {return;}
 			checkLick();
-			checkShock();
 			checkCHRIMSONStim();
 
 			long current_time = signedMillis() - _cue_on_time; //****Changed to be wrt cue onset (not total trial time)
@@ -1104,8 +1051,8 @@ void response_window() {
 
 			if (current_time >= _params[INTERVAL_MAX]) {      // Window Closed -> IDLE_STATE **** NEVER SHOULD HAPPEN FOR PAVLOVIAN!
 				setHouseLamp(true);                               // House Lamp ON (to indicate error)
-				playSound(TONE_ALERT);
-				// Send event marker (window closed) to HOST with timestamp
+				playSound(TONE_NO_LICK);
+        // Send event marker (window closed) to HOST with timestamp
 				sendMessage("&" + String(EVENT_WINDOW_CLOSED) + " " + String(signedMillis() - _exp_timer));
 				
 				sendMessage("PAVLOVIAN ERROR: Reward window closed at " + String(current_time) +"ms.");
@@ -1145,7 +1092,6 @@ void response_window() {
 			if (checkQuit()) {return;}
 			if (checkLick()) {return;}
 			checkCHRIMSONStim();
-			checkShock();
 
 			long current_time = signedMillis() - _cue_on_time; // WRT cue onset
 			if (_reached_target==0 && current_time >= _params[TARGET]) { // If now is target time...record but stay in state (Operant only)
@@ -1161,7 +1107,7 @@ void response_window() {
 
 			if (current_time >= _params[INTERVAL_MAX]) {      // Window Closed -> POST_WINDOW
 				// setHouseLamp(true);                               // House Lamp ON (to indicate error) //QD commented out
-				// playSound(TONE_ALERT);								// QD commented out
+				// playSound(TONE_NO_LICK);								// QD commented out
 				// Send event marker (window closed) to HOST with timestamp
 				sendMessage("&" + String(EVENT_WINDOW_CLOSED) + " " + String(signedMillis() - _exp_timer));
 				//------------------------DEBUG MODE--------------------------//  
@@ -1204,7 +1150,6 @@ void response_window() {
 
 				checkLick();
 				checkCHRIMSONStim();
-				checkShock();
 
 				long current_time = signedMillis() - _cue_on_time; //****Changed to be wrt cue onset (not total trial time)
 				if (_reached_target==0 && current_time >= _params[TARGET]) { // TARGET -> REWARD
@@ -1222,8 +1167,8 @@ void response_window() {
 
 				if (current_time >= _params[INTERVAL_MAX]) {      // Window Closed -> IDLE_STATE **** NEVER SHOULD HAPPEN FOR PAVLOVIAN!
 					setHouseLamp(true);                               // House Lamp ON (to indicate error)
-					playSound(TONE_ALERT);
-					// Send event marker (window closed) to HOST with timestamp
+					playSound(TONE_NO_LICK);
+          // Send event marker (window closed) to HOST with timestamp
 					sendMessage("&" + String(EVENT_WINDOW_CLOSED) + " " + String(signedMillis() - _exp_timer));
 					//------------------------DEBUG MODE--------------------------//  
 					if (_params[_DEBUG]) {
@@ -1265,7 +1210,6 @@ void response_window() {
 
 				if (checkLick()) {return;}
 				checkCHRIMSONStim();
-				checkShock();
 
 				long current_time = signedMillis()-_cue_on_time; // WRT cue onset
 				if (_reached_target==0 && current_time >= _params[TARGET]) { // If now is target time...record but stay in state (Operant only)
@@ -1281,7 +1225,7 @@ void response_window() {
 
 				if (current_time >= _params[INTERVAL_MAX]) {      // Window Closed -> POST_WINDOW
 					// setHouseLamp(true);                               // House Lamp ON (to indicate error) //QD commented out
-					// playSound(TONE_ALERT);							//QD commented out
+					// playSound(TONE_NO_LICK);							//QD commented out
 					// Send event marker (window closed) to HOST with timestamp
 					sendMessage("&" + String(EVENT_WINDOW_CLOSED) + " " + String(signedMillis() - _exp_timer));
 					//------------------------DEBUG MODE--------------------------//  
@@ -1334,14 +1278,13 @@ void post_window() {
 	~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 	if (checkQuit()) {return;}
 	if (checkLick()) {return;} // this should break out of state and go back to state list //QD
-	checkShock();
 	checkCHRIMSONStim();
 
 	if (signedMillis() - _cue_on_time >= _params[TRIAL_DURATION]) {  // TRIAL END -> ITI
 		// Send event marker (trial end) to HOST with timestamp
 		sendMessage("&" + String(EVENT_TRIAL_END) + " " + String(signedMillis() - _exp_timer));
-		playSound(TONE_ALERT);
-		_state = INTERTRIAL;                          // Move to ITI
+		playSound(TONE_NO_LICK);
+    _state = INTERTRIAL;                          // Move to ITI
 		if (!_late_lick_detected) {                    // If this is first lick in post window
 			_resultCode = CODE_NO_LICK;                  // Register result code      
 		}
@@ -1416,7 +1359,6 @@ void reward() {
 	if (checkQuit()) {return;}
 	checkLick();
 	checkCHRIMSONStim();
-	checkShock();
 
 	if (signedMillis() - _reward_timer >= _reward_duration_this_trial && !_reward_dispensed_complete) { // Reward duration elapsed...terminate reward
 		setReward(false);                                   // Stop delivery
@@ -1473,7 +1415,6 @@ void abort_trial() {
 		TRANSITION LIST -- checks conditions, moves to next state
 	~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 	if (checkQuit()) {return;}
-	checkShock();
 	checkLick();
 	checkCHRIMSONStim();
 
@@ -1578,7 +1519,6 @@ void intertrial() {
 	if (checkQuit()) {return;}
 	checkLick();
 	checkCHRIMSONStim();
-	checkShock();
 
 	if (_command == 'P') {                          // Received new param from HOST: format "P _paramID _newValue" ('P' for Parameters)
 		isParamsUpdateStarted = true;                   // Mark transmission start. Don't start next trial until we've finished.
@@ -1691,14 +1631,6 @@ bool rxnWindowLickActions() {
 		// Send a event marker (lick) to HOST with timestamp
 		sendMessage("&" + String(EVENT_LICK) + " " + String(signedMillis() - _exp_timer));
 		_lick_state = true;                        // Halt lick detection
-		//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Check for Quinine Window~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
-		if (signedMillis()-_cue_on_time < _params[QUININE_MAX] && signedMillis() - _quinine_timer >= _params[QUININE_TIMEOUT] && signedMillis() - _cue_on_time > _params[QUININE_MIN]) { // If quinine window open
-			playSound(TONE_QUININE);                   // Dispense quinine for QUININE_DURATION
-			_quinine_timer = signedMillis();           // Log time of last quinine deterrant
-		}
-		//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
-		//------------------------DEBUG MODE--------------------------//
-		if (_params[_DEBUG]) {sendMessage("Early pre-window lick detected @ " + String(_lick_time) + "ms. Dispensing Quinine: No lick IS enforced.");}
 		//----------------------end DEBUG MODE------------------------//
 		// ########### ABORT WINDOW TRIGGERED ########################################################## //
 		if (_params[EARLY_LICK_ABORT] == 1 && signedMillis() - _cue_on_time > _params[ABORT_MIN] && signedMillis()-_cue_on_time < _params[ABORT_MAX]) { // If abort window open
@@ -1883,19 +1815,6 @@ void generalLickActions() {
 
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	Check for Shock Actions
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-void checkShock() {
-	if (_params[SHOCK_ON]) {                   		// If shock circuit enforced
-		if (!_shock_trigger_on && signedMillis() - _cue_on_time > _params[SHOCK_MIN] && signedMillis()-_cue_on_time < _params[SHOCK_MAX]) { // If shock window is open
-			setShockTrigger(true);                          // Connect the shock ckt        
-		}
-		else if (_shock_trigger_on) {               // Otherwise, if shock is on, but we're in the wrong window...                                            
-			setShockTrigger(false);                           // Disconnect shock ckt
-		}
-	}
-} // end checkShock---------------------------------------------------------------------------------------------------------------------
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	Check for CHRIMSON Stim Actions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 void checkCHRIMSONStim() {
@@ -2048,7 +1967,20 @@ void setLickEchoLED(bool turnOn) {
 	}
 } // end Set Cue LED---------------------------------------------------------------------------------------------------------------------
 
-// I just copied the LICK ECHO LED - NH
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	Set Trigger LED (ON/OFF)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+void setTriggerLED(bool turnOn) {
+	if (turnOn) {
+		digitalWrite(PIN_IR_LED_TRIGGER, HIGH);
+	}
+	else {
+		digitalWrite(PIN_IR_LED_TRIGGER, LOW);
+	}
+} // end Set Trigger LED---------------------------------------------------------------------------------------------------------------------
+
+
+
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	Set REWARD ECHO (ON/OFF)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
@@ -2066,31 +1998,15 @@ void setRewardEcho(bool turnOn) {
 	GET LICK STATE (True/False - Boolean) 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 bool getLickState() {
-	if (_analog_lick_mode) {
-		// Get current low-pass filtered analog read:
-		_filtered_read = analogRead(PIN_LICK_ACC) + 0.95*_filtered_read;
-		if (_filtered_read > _params[A_LICK_THRESH]) {
-			digitalWrite(PIN_ALICK_OUT, HIGH);
-			setLickEchoLED(true);
-			return true;
-		}
-		else {
-			digitalWrite(PIN_ALICK_OUT, LOW);
-			setLickEchoLED(false);
-			return false;
-		}
+	if (digitalRead(PIN_LICK) == HIGH) {
+		setLickEchoLED(true);
+		return true;
+	} else {
+		setLickEchoLED(false);
+		return false;
 	}
-	else {
-		if (digitalRead(PIN_LICK) == HIGH) {
-			setLickEchoLED(true);
-			return true;
-		}//HIGH) {return true;}
-		else {
-			setLickEchoLED(false);
-			return false;
-		}
-	}
-} // end Get Lever State---------------------------------------------------------------------------------------------------------------------
+}
+
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	PLAY SOUND (Choose event from Enum list and input the frequency for that event)
@@ -2106,7 +2022,7 @@ void playSound(SoundEventFrequencyEnum soundEventFrequency) {
 		tone(PIN_SPEAKER, soundEventFrequency, 200);      // Play Reward Tone (200 ms)
 		return;                                           // Exit Fx
 	}
-	if (soundEventFrequency == TONE_ALERT) {        // SYSTEM: INTERNAL ERROR
+  if (soundEventFrequency == TONE_NO_LICK) {        // SYSTEM: INTERNAL ERROR
 		noTone(PIN_SPEAKER);                              // Turn off current sound (if any)
 		tone(PIN_SPEAKER, soundEventFrequency, 2000);     // Play Alert Tone (default 2000 ms)
 		return;                                           // Exit Fx
