@@ -10,7 +10,7 @@
 	Last Modified 8/8/24 - ahamilos	"RIG1 LATE AH AUG 8 2024 1750h"
 	** Same as Hyb_CHRIMSON_hazard.ino, but updated for Teensy3.6 */
  
-	static String versionCode        = "RIG1 LATE AH AUG 1 2024 1750h";
+ 	static String versionCode        = "RIG1 LATE AH AUG 1 2024 1750h";
 	
 	
 /*	New to THIS version:
@@ -920,11 +920,11 @@ void pre_window() {
 		TRANSITION LIST -- checks conditions, moves to next state
 	~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 	if (checkQuit()) {
-		setCueLED(false)
+		setCueLED(false);
 		return;
 		}
 	if (checkLick()) {
-		setCueLED(false)
+		setCueLED(false);
 		return;
 		}
 	checkCHRIMSONStim();
