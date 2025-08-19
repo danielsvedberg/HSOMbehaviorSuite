@@ -22,41 +22,43 @@ classdef OptogeneticsController < handle
 	%		Methods
 	%----------------------------------------------------
 	methods
-		function obj = OptogeneticsController()
-			% Find arduino port
-			arduinoPortName = OptogeneticsController.QueryPort();
-
-			% Splash
-			if ~strcmp(arduinoPortName, '/offline')
-				obj.CreateDialog_Splash()
-			end
-
-			% Establish arduino connection
-			obj.Arduino = ArduinoConnection(arduinoPortName);
-
-			% Creata Experiment Control window with all the knobs and buttons you need to set up an experiment. 
-			obj.CreateDialog_ExperimentControl()
-
-			% Create Monitor window with all thr trial results and plots and stuff so the Grad Student is ON TOP OF THE SITUATION AT ALL TIMES.
-			obj.CreateDialog_Monitor()
-
-			% 9-23-23: adding task scheduler, comment out to remove as default
-			% Create Task Scheduler
-			obj.CreateDialog_TaskScheduler()
-			if isfield(obj.Rsc, 'TaskScheduler') && isvalid(obj.Rsc.TaskScheduler)
-				position = obj.Rsc.TaskScheduler.OuterPosition(1:2) + [0, obj.Rsc.TaskScheduler.OuterPosition(4)];
-			else
-				position = [];
-			end
-
-			% Kill splash
-			if ~strcmp(arduinoPortName, '/offline')
-				obj.CloseDialog_Splash()
-			end
-
-			% This gives the Optocontroller handle to Arduino Connection
-			obj.Arduino.OptogeneticsController = obj;
-		end
+        function obj = OptogeneticsController(varargin)
+            p = inputParser();
+            p.addParameter('COM','', @ischar);
+            p.addParameter('noGUI', false, @islogical);
+            p.parse(varargin{:});
+            comPort = p.Results.COM;
+            noGUI = p.Results.noGUI;
+        
+            if isempty(comPort)
+                arduinoPortName = OptogeneticsController.QueryPort();
+            else
+                arduinoPortName = comPort;
+            end
+        
+            % Splash screen (optional)
+            if ~noGUI && ~strcmp(arduinoPortName, '/offline')
+                obj.CreateDialog_Splash();
+            end
+        
+            % Establish arduino connection
+            obj.Arduino = ArduinoConnection(arduinoPortName);
+        
+            % GUI setup
+            if ~noGUI
+                obj.CreateDialog_ExperimentControl();
+                obj.CreateDialog_Monitor();
+                obj.CreateDialog_TaskScheduler();
+            end
+        
+            % Close splash screen (optional)
+            if ~noGUI && ~strcmp(arduinoPortName, '/offline')
+                obj.CloseDialog_Splash();
+            end
+        
+            % Set back-reference
+            obj.Arduino.OptogeneticsController = obj;
+        end
 
 		function CreateDialog_ExperimentControl(obj)
 			% If object already exists, show window
@@ -162,9 +164,27 @@ classdef OptogeneticsController < handle
 				'TooltipString', 'Reset Arduino (parameters will not be changed).',...
 				'Callback', {@OptogeneticsController.ArduinoReset, obj.Arduino}...
 			);
-%% AH 3/16/18 update --------------------------------------------------------------------------
-			% Stimulate ChR2 button - for use with Optogenetics Controller
+%% --------------------------------------------------------------------------------------------
+%% NH 05/01/25 update - Added Chrimson Button
+% Stimulate Chrimson button - for use with Optogenetics Controller
 			ctrlPosBase = button_reset.Position;
+			ctrlPos = [...
+				ctrlPosBase(1),...
+				ctrlPosBase(2) - buttonHeight - ctrlSpacing,...
+				buttonWidth,...	
+				buttonHeight...
+			];
+			button_UI_Chrimson = uicontrol(...
+				'Parent', dlg,...
+				'Style', 'pushbutton',...
+				'Position', ctrlPos,...
+				'String', 'Chrimson',...
+				'TooltipString', 'Stimulate Chrimson with UI parameters.',...
+				'Callback', {@OptogeneticsController.StimulateChrimson, obj.Arduino}...
+			);
+
+% Stimulate ChR2 button - for use with Optogenetics Controller
+			ctrlPosBase = button_UI_Chrimson.Position;
 			ctrlPos = [...
 				ctrlPosBase(1),...
 				ctrlPosBase(2) - buttonHeight - ctrlSpacing,...
@@ -177,9 +197,8 @@ classdef OptogeneticsController < handle
 				'Position', ctrlPos,...
 				'String', 'ChR2',...
 				'TooltipString', 'Stimulate ChR2 with UI parameters.',...
-				'Callback', {@OptogeneticsController.StimulateChR2, obj.Arduino}...
-			);
-%% --------------------------------------------------------------------------------------------
+                'Callback', {@OptogeneticsController.StimulateChR2, obj.Arduino}...
+             );
 %% AH 5/2/18 update --------------------------------------------------------------------------
 			% Optotag ChR2 button - for use with Optogenetics Controller
 			ctrlPosBase = button_UI_ChR2.Position;
@@ -1617,11 +1636,16 @@ classdef OptogeneticsController < handle
 		function ArduinoReset(~, ~, arduino)
 			arduino.Reset()
 			fprintf('Reset.\n')
-		end
+        end
+        %% Nigel Chrimson Stimulation additions
+        function StimulateChrimson(~,~, arduino)
+            arduino.Chrimson()
+            fprintf('Stimulating Chrimson with UI parameters..\n')
+        end
 		function StimulateChR2(~, ~, arduino)
 			arduino.ChR2()
 			fprintf('Stimulating ChR2 with UI parameters...\n')
-		end
+        end
 		function Optotag(~, ~, arduino)
 			arduino.Optotag()
 			fprintf('Called Optotagging ladder...\n')

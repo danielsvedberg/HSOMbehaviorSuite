@@ -238,6 +238,10 @@ Available pins for 3.4: 4-11 20-23
 #define PIN_LICK           5//others 2// ephys room 5    // 6Lick Pin              2 (DUE = 36)  (MEGA =  2)  (UNO =  2)  (TEENSY = 2)	(TEENSY3.4 22)
 #define PIN_RECEIPT        56//others 8// ephys room 1  	// Confirms Optogenetics Command Received 					 8  (TEENSY = 8)	(TEENSY3.4 8)
 
+//Analog Output Stuff
+#define ANALOG_WRITE_RESOLUTION             12      // 12bits: 0-4095
+#define PIN_PHOTOMETRY_PWR			              A21    // controls photometry LED
+
 /*****************************************************
 Enums - DEFINE States
 *****************************************************/
@@ -253,6 +257,8 @@ enum State
 	REWARD,               // Dispense reward, wait for trial Timeout
 	ABORT_TRIAL,          // Behavioral Error - House lamps ON, await trial Timeout  // ABORT_LATE,			  // Late window task -- QD
 	INTERTRIAL,           // House lamps ON (if not already), write data to HOST and DISK, receive new params
+	OPTOTAGGING,					// End of session, stimulation pulses at fixed frequency; controls Optogenetics Arduino
+	PHOTOMETRY,           // controls Photometry LED
 	_NUM_STATES           // (Private) Used to count number of states
 };
 
@@ -268,11 +274,13 @@ static const char *_stateNames[] =
 	"POST_WINDOW",
 	"REWARD",
 	"ABORT_TRIAL", // "ABORT_LATE", //QD
-	"INTERTRIAL"
+	"INTERTRIAL",
+	"OPTOTAGGING",
+	"PHOTOMETRY"
 };
 
 // Define which states allow param update
-static const int _stateCanUpdateParams[] = {0,1,0,0,0,0,0,0,1}; 
+static const int _stateCanUpdateParams[] = {0,1,0,0,0,0,0,0,1,0,0}; 
 // Defined to allow Parameter upload from host during IDLE_STATE and INTERTRIAL
 
 
@@ -306,6 +314,8 @@ enum EventMarkers
   	EVENT_JUICE_HIGH,		// Marks a high juice dispensal, 2x the normal duration
   	EVENT_JUICE_LOW,		// Marks a low dispensal, 0.5x the normal
   	EVENT_LATE_WINDOW,		// Marks entry to the late window
+	EVENT_PHOTOMETRY_ON,		// Marks the start of photometry stimulation
+	EVENT_PHOTOMETRY_OFF,		// Marks the end of photometry stimulation
 	_NUM_OF_EVENT_MARKERS
 };
 
@@ -331,7 +341,9 @@ static const char *_eventMarkerNames[] =    // * to define array of strings
   	"CHRIMSON_STIM_END",
   	"JUICE_HIGH",
   	"JUICE_LOW",
-  	"EVENT_LATE_WINDOW"
+  	"EVENT_LATE_WINDOW",
+	"PHOTOMETRY_ON",
+	"PHOTOMETRY_OFF"
 };
 
 /*****************************************************
@@ -408,6 +420,8 @@ enum ParamID
 	P_STIM_ON_FLICK,				// Probability of a stimulation occurring triggered by f-lick (default 0)
 	IF_FLICKSTIM_EARLY1_REW2_ALL0,	// Decide if we will only stim on rewarded or early trials...
 	P_JUICE_HI_OR_LOW,				// probability of giving a higher or lower juice amount on a rewarded trial
+	PHOTOMETRY,					  // 1 to enable photometry stimulation
+	PHOTOMETRY_AOUT,				// Photometry LED power (0-255)
 	_NUM_PARAMS                     // (Private) Used to count how many parameters there are so we can initialize the param array with the correct size. Insert additional parameters before this.
 }; //**** BE SURE TO ADD NEW PARAMS TO THE NAMES LIST BELOW!*****//
 
@@ -442,7 +456,9 @@ static const char *_paramNames[] =
 	"STIM_CANCEL_LICK_WIN_STIM",
 	"P_STIM_ON_FLICK",
 	"IF_FLICKSTIM_EARLY1_REW2_ALL0",	// Decide if we will only stim on rewarded or early trials...
-	"P_JUICE_HI_OR_LOW"
+	"P_JUICE_HI_OR_LOW",
+	"PHOTOMETRY",
+	"PHOTOMETRY_AOUT",
 }; //**** BE SURE TO INIT NEW PARAM VALUES BELOW!*****//
 
 // Initialize parameters
@@ -475,7 +491,9 @@ int _params[_NUM_PARAMS] =
 	0,								              // STIM_CANCEL_LICK_WIN_STIM
 	0,								              // P_STIM_ON_FLICK
 	0,								              // IF_FLICKSTIM_EARLY1_REW2_ALL0
-	0 								              // P_JUICE_HI_OR_LOW
+	0, 								              // P_JUICE_HI_OR_LOW
+	0,								// PHOTOMETRY
+	0								// PHOTOMETRY_AOUT
 };
 
 /*****************************************************
@@ -504,6 +522,7 @@ static long _reward_timer            = 0;        // Tracks time in reward state
 static long _abort_timer             = 0;        // Tracks time in abort state
 static long _ITI_timer               = 0;        // Tracks time in ITI state
 static long _preCueDelay             = 0;        // Initialize _preCueDelay var
+static bool _photometry               = false;    // Track if photometry is on
 static bool _reward_dispensed_complete = false;  // init tracker of reward dispensal
 static long _dice_roll               = 0;        // Randomly select if trial will be pav or op
 static bool _mixed_is_pavlovian      = true;     // Track if current mixed trial is pavlovian
@@ -517,6 +536,7 @@ static bool	_need2check_non_zero_CHRIMSON   = false; // Track if user wants to s
 static bool _CHRIMSON_cancelled 		 = false;    // Track if CHRIMSON request has been cancelled
 static unsigned int _reward_duration_this_trial = 35; // Sets the reward duration of the current trial and hangs onto it
 
+int _photometry_aout = 0; // Track the photometry aout value
 
 /*****************************************************
 	INITIALIZATION LOOP
@@ -529,18 +549,20 @@ void setup()
 	pinMode(PIN_LED_CUE, OUTPUT);               // LED for 'start' cue
 	pinMode(PIN_SPEAKER, OUTPUT);               // Speaker for cue/correct/error tone
 	pinMode(PIN_REWARD, OUTPUT);                // Reward OUT
-  pinMode(PIN_3_3, OUTPUT);                   // A 3.3V src
-  // pinMode(PIN_IR_HOUSE, OUTPUT);				// An IR Houselamp - always on
-  pinMode(PIN_LICK_ECHO, OUTPUT);				// Lick echo
-  // Adding reward echo here - NH
-  pinMode(PIN_REWARD_ECHO, OUTPUT);
-  pinMode(PIN_CHRIMSON, OUTPUT);				    // Trigger for CHRIMSON Program
-  pinMode(PIN_FIRST_LICK, OUTPUT);			// Send first lick pulse to optocontroller
-  pinMode(PIN_CANCEL_CHRIMSON, OUTPUT);			// Cancel CHRIMSON request
+	pinMode(PIN_3_3, OUTPUT);                   // A 3.3V src
+	// pinMode(PIN_IR_HOUSE, OUTPUT);				// An IR Houselamp - always on
+	pinMode(PIN_LICK_ECHO, OUTPUT);				// Lick echo
+	// Adding reward echo here - NH
+	pinMode(PIN_REWARD_ECHO, OUTPUT);
+	pinMode(PIN_CHRIMSON, OUTPUT);				    // Trigger for CHRIMSON Program
+	pinMode(PIN_FIRST_LICK, OUTPUT);			// Send first lick pulse to optocontroller
+	pinMode(PIN_CANCEL_CHRIMSON, OUTPUT);			// Cancel CHRIMSON request
 	// INPUTS
 	pinMode(PIN_LICK, INPUT);                   // Lick detector
 	pinMode(PIN_RECEIPT, INPUT);				// Confirms Optogenetics Controller received command, used for event marker
 	pinMode(PIN_CAMO, INPUT);					// Simply relays CamO to CED
+	analogWriteResolution(ANALOG_WRITE_RESOLUTION);           // Allows analogwrite??
+	pinMode(PIN_PHOTOMETRY_PWR, OUTPUT);		// Photometry LED power control
 
 	//--------------------------------------------------------//
 
@@ -635,6 +657,10 @@ void loop()
 			case INTERTRIAL:
 				intertrial();
 				break;
+
+			case OPTOTAGGING:
+				optotagging();
+				break;
 		} // End switch statement--------------------------
 	}
 } // End main loop-------------------------------------------------------------------------------------------------------------
@@ -648,11 +674,13 @@ void mySetup()
 	setHouseLamp(true);                          // House Lamp ON
 	setCueLED(false);                            // Cue LED OFF
 	setTriggerLED(true);						 // Trigger LED begins in ON config - camera detects falling edge
-  digitalWrite(PIN_3_3, HIGH);				 // IR Trigger Reset
-  // digitalWrite(PIN_IR_HOUSE, HIGH);			 // Houselamp Always On
-  digitalWrite(PIN_FIRST_LICK, LOW);			 // Initialize first lick tracker to low
-  setCHRIMSONTrigger(false);					     // Turn off CHRIMSON trigger
-  cancelCHRIMSON(false);							 // Reset Cancellation Trigger
+	digitalWrite(PIN_3_3, HIGH);				 // IR Trigger Reset
+	// digitalWrite(PIN_IR_HOUSE, HIGH);			 // Houselamp Always On
+	digitalWrite(PIN_FIRST_LICK, LOW);			 // Initialize first lick tracker to low
+	setCHRIMSONTrigger(false);					     // Turn off CHRIMSON trigger
+	cancelCHRIMSON(false);							 // Reset Cancellation Trigger
+	setPhotometryLED(false);					 // Turn off Photometry LED
+
 
 	//---------------------------Reset a bunch of variables---------------------------//
 	_eventMarkerTimer       	= 0;
@@ -697,10 +725,6 @@ void mySetup()
 
 
 
-
-
-
-
 /*****************************************************
 	States for the State Machine
 *****************************************************/
@@ -730,6 +754,7 @@ void idle_state() {
 		setCHRIMSONTrigger(false);							 // Kill CHRIMSON trigger
 		digitalWrite(PIN_FIRST_LICK, LOW);				 // Kill first lick pin
 		cancelCHRIMSON(false);								 // Reset cancellation trigger
+		setPhotometryLED(false);					 // Turn off Photometry LED
 		
     // Reset state variables
 		_pre_window_elapsed = false;                 	 // Reset pre_window time tracker
@@ -759,7 +784,10 @@ void idle_state() {
 	if (_command == 'G') {                           // If Received GO signal from HOST ---transition to---> READY
     // Send Trigger Signal to the CED/NiDAQ:
 		// Note, in new version this turns IR LED to OFF state
-    setTriggerLED(false);
+    	setTriggerLED(false);
+		// if photometry is on, turn it on
+		if (_params[PHOTOMETRY] == 1) {
+			setPhotometryLED(true);
     	// playSound(TONE_TRIGGER);                                                                                                                         ////////////////////////////////////////////////////////////////////////////////trigger///////////////////////////
 		_state = INIT_TRIAL;                              // State set to INIT_TRIAL
 		return;                                           // Exit function
@@ -1551,6 +1579,14 @@ void intertrial() {
 } // End ITI---------------------------------------------------------------------------------------------------------------------
 
 
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	OPTOTAGGING - Optotagging protocol setting frequency and number of pulses, controls Optogenetics Arduino
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+void optotagging() {
+
+
+
+}
 
 
 
@@ -2065,6 +2101,16 @@ void setReward(bool turnOn) {
 	}
 } // end Set Reward---------------------------------------------------------------------------------------------------------------------
 
+
+void setPhotometryLED(bool turnOn) {
+	if (turnOn)													   
+	{                                                                 // MOUSE: Turn on Photometry
+		analogWrite(PIN_PHOTOMETRY_PWR, _params[PHOTOMETRY_AOUT]);   
+	} else {
+		analogWrite(PIN_PHOTOMETRY_PWR, 0);                            // MOUSE: Turn off Photometry
+	}
+}
+									                                    // Photometry Pin HIGH
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	Set OptoStimulating LED (ON/OFF)
