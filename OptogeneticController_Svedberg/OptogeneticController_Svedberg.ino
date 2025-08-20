@@ -416,6 +416,9 @@ static bool singleTrainMode = false;
 unsigned long pulseTimer = 0;
 bool inPulse = false;
 int pulseIndex = 0;
+int chrimsonidx = 0;  // Analog output index for Chrimson and ChR2
+int chr2idx = 0;       // Analog output index for ChR2
+  
 int currentTrain = 0;
 int currentAout = 0;
 bool delayAfterPhase = false;
@@ -423,8 +426,8 @@ unsigned long delayStartTime = 0;
 int phase = 0;
 unsigned long ipiTimer = 0;
 unsigned long chR2ipiTimer = 0;
-float chrimsonLadder[5];
-float chr2Ladder[5];
+float chrimsonLadder[6];
+float chr2Ladder[6];
 bool dingdong = false; // toggle for ChR2 and Chrimson
 
 // === Parameter Updates === //
@@ -900,6 +903,8 @@ void dan_tag_state() {
     _prevState = _state;
     sendMessage("$" + String(_state));
     pulseIndex = 0;
+    chrimsonidx = 0;
+    chr2idx = 0;
     currentAout = 0;
     inPulse = false;
     phase = 0;
@@ -1073,9 +1078,11 @@ void setAnalogOutput(int channel, int value){
 	{
 	    case 1:
 	    	analogWrite(PIN_CHRIMSON_PWR, value);
+        digitalWrite(PIN_CHRIMSON_STIM, HIGH); // ensure stim pin is high when analog power set
 	    	break;
 	    case 2:
 	    	analogWrite(PIN_CHR2_PWR, value);
+        digitalWrite(PIN_CHR2_STIM, HIGH); // ensure stim pin is high when analog power set
 	    	break;
 	}
 }
@@ -1086,7 +1093,7 @@ void setAnalogOutput(int channel, int value){
 void setChrimsonLED(bool turnOn)
 {
   if (turnOn) {
-    analogWrite(PIN_CHRIMSON_PWR, _params[CHRIMSON_AOUT_VALUE]);
+    analogWrite(PIN_CHRIMSON_PWR, _params[CHRIMSON_AOUT_3_VALUE]);
     digitalWrite(PIN_CHRIMSON_STIM,HIGH);
     //sendEventMarker(EVENT_CHRIMSON_STIM_ON, -1);
   }
@@ -1101,7 +1108,7 @@ void setChrimsonLED(bool turnOn)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 void setChR2LED(bool turnOn){
   if (turnOn) {
-    analogWrite(PIN_CHR2_PWR, _params[CHR2_AOUT_VALUE]);
+    analogWrite(PIN_CHR2_PWR, _params[CHR2_AOUT_3_VALUE]);
     digitalWrite(PIN_CHR2_STIM, HIGH);
     //sendEventMarker(EVENT_CHR2_STIM_ON, -1);
   }
@@ -1155,9 +1162,7 @@ void runChrimsonPulse() {
 
 // === Function: runChR2ChrimsonPulses ===
 void runChR2ChrimsonPulses() {
-  static int chrimsonidx = 0;  // Analog output index for Chrimson and ChR2
-  static int chr2idx = 0;       // Analog output index for ChR2
-  
+
   if (chrimsonidx >= 6) chrimsonidx = 0; // Reset Chrimson index if it exceeds the number of aouts
   if (chr2idx >= 6) chr2idx = 0; // Reset ChR2 index if it exceeds the number of aouts
 
