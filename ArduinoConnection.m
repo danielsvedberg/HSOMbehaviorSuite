@@ -6,12 +6,12 @@
 % 	Last Modified: 	5/2/18 Allison Hamilos 	ahamilos{at}g.harvard.edu
 % 
 % Update Hx:
-% 	3/16/18: Added ChR2() method to UI stimulate ChR2
+% 	3/16/18: Added ChR2() method
+%  RESERVED COMMANDS: to UI stimulate ChR2
 % 	5/2/18:  Added Optotag() to init ladder
 % 
 % 
-%  RESERVED COMMANDS:
-% 		C, G, P, Q, R, T
+% 		C, G, P, Q, R, T, L, J,D
 %  RESERVED RECEIPTS:
 % 		R, ~, `, @, &, $*, #, +
 % --------------------------------------------------------------
@@ -46,9 +46,16 @@ classdef ArduinoConnection < handle
 		Nidaq = []
 		Listeners
 	end
+    
+    %Added from Lingfengs
+    properties (Transient, Hidden)
+        AnalogOutputEventIndex = 0
+    end
 
 	events
 		StateChanged
+        TaskRequested %Added from Lingfengs
+        OptoRequested %Added from Lingfengs
 	end
 
 	methods
@@ -104,7 +111,11 @@ classdef ArduinoConnection < handle
 		%		File I/O
 		%-----------------------------------------------~~
 		% Save parameters to parameter file
-		function SaveParameters(obj)
+        %Added from Lingfengs
+		function varargout = SaveParameters(obj, path)
+            if nargin < 2
+                path = '';
+            end
 			% Fetch params from object
 			parameterNames = obj.ParamNames; 		% store parameter names
 			parameterValues = obj.ParamValues; 		% store parameter values
@@ -117,6 +128,8 @@ classdef ArduinoConnection < handle
 			end
 			% Save to file
 			save([filepath, filename], 'parameterNames', 'parameterValues');
+
+            varargout = {path}; %Added from Lingfengs
 		end
 
 		% Load parameters from parameter/experiment file
@@ -407,10 +420,40 @@ classdef ArduinoConnection < handle
 					obj.ResultCodeNames{codeId} = subStrings{2};
 				case '~'
 					fprintf('\nUp and running.\n')
-% AH 3/16/18 -------------------------------------------------------------------------
-				case 'R'
-					fprintf('\nArduino received stimulation command.\n')
-% ------------------------------------------------------------------------------------
+% NH 05/12/2025-----------------------------------------------------------------------
+                case ':'
+					% Arduino sent analogWriteResolution - ": 12"
+					subStrings = strsplit(strtrim(value), ' ');
+					obj.AnalogOutputResolution = str2num(subStrings{1});
+                    if ~isempty(obj.AnalogOutputEvents)
+                        warning('AnalogOutputEvents is not empty, but is being overriden. If you are reading this, arduino probably sent the ":" symbol more than once')
+                    end
+                    obj.AnalogOutputEventIndex = 0;
+                    obj.AnalogOutputEvents = NaN(100, 4);
+                case '%'
+					% Arduino sent analogOutputEvent - "% channel value timestamp"
+					% Arduino sent an event code and its timestamp - "& 0 100"
+					subStrings = strsplit(strtrim(value), ' ');
+					channel = str2num(subStrings{1}); % Both arduino and matlab use 1 based index, i.e., channel 1 or 2
+					value = str2num(subStrings{2});
+                    timestamp = str2num(subStrings{3});
+					absTime = now;
+                    obj.AnalogOutputEventIndex = obj.AnalogOutputEventIndex + 1;
+                    
+                    % Allocate a bigger array if necessary
+                    if obj.AnalogOutputEventIndex > size(obj.AnalogOutputEvents, 1)
+                        obj.AnalogOutputEvents = vertcat(obj.AnalogOutputEvents, NaN(size(obj.AnalogOutputEvents))); % Woah you just walk around with that thing?
+                    end
+
+					obj.AnalogOutputEvents(obj.AnalogOutputEventIndex, :) = [channel, value, timestamp, absTime];
+
+					% Debug message
+					if obj.DebugMode 
+                        fprintf('\t\tANALOG_OUT: Channel %i set to %i.\n', channel, value)
+                    end
+                    
+				% case 'R'
+				% 	fprintf('\nArduino received stimulation command.\n')
 				otherwise
 					% Arduino sent a message
 					fprintf('%s\n', messageString)
@@ -425,14 +468,66 @@ classdef ArduinoConnection < handle
 			end
 		end
 
+        %Set State
+        function SetState(obj, state, index)
+            if nargin < 3
+                index = 1;
+            end
+            obj.State(index) = state;
+        end
+        % Get State>
+        function state = GetState(obj, index)
+            if nargin < 2
+                index = 1;
+            end
+
+            if isempty(obj.State)
+                state = 1;
+            else
+                state = obj.State(index);
+            end
+        end
+
+        % Read a parameter
+		function varargout = GetParam(obj, index)
+			p = inputParser;
+			addRequired(p, 'Index', @(x) isnumeric(x) || ischar(x));
+			parse(p, index);
+			index = p.Results.Index;
+
+			if ischar(index)
+				index = find(strcmpi(index, obj.ParamNames));
+			end
+
+			if isempty(index)
+				varargout = {[]};
+			else
+				index = index(1);
+				varargout = {obj.ParamValues(index)};
+			end
+		end
+% ------------------------------------------------------------------------------------
 		% Update a single parameter by index
-		function SetParam(obj, paramId, value)
+		function SetParam(obj, index, value)
+			p = inputParser;
+			addRequired(p, 'Index', @(x) isnumeric(x) || ischar(x));
+			addRequired(p, 'Value', @isnumeric);
+			parse(p, index, value);
+			index = p.Results.Index;
+            value = p.Results.Value;
+            
+            if ischar(index)
+	            index = find(strcmpi(index, obj.ParamNames));
+            end
+
+            assert(~isempty(index), 'Invalid parameter index: check spelling if using param name as index.')
+
 			% Update parameter value in MATLAB
-			obj.ParamValues(paramId) = value;
-            % Convert zero-based indices (Arduino) to one-based indices (MATLAB)
-			paramId = paramId - 1;
+			obj.ParamValues(index) = value;
+			% Convert zero-based indices (Arduino) to one-based indices (MATLAB)
+			index = index - 1;
 			% Send new parameter to arduino via serial comms ("P id newValue")
-			obj.SendMessage(sprintf('P %d %d', paramId, value))
+			obj.SendMessage(sprintf('P %d %d', index, value))
 		end
 
 		% Add parameter update arguments to queue
@@ -482,6 +577,13 @@ classdef ArduinoConnection < handle
 
 		% Trigger a soft restart on arduino
 		function Reset(obj)
+			obj.EventMarkers = [];
+			obj.EventMarkersUntrimmed = [];
+			obj.EventMarkersBuffer = [];
+			obj.Trials = struct([]); 
+			obj.TrialsCompleted = 0;
+			obj.State = [];
+
 			obj.SendMessage('R')
 		end
 
@@ -499,21 +601,61 @@ classdef ArduinoConnection < handle
 				fopen(obj.SerialConnection)
 			end
 		end
-% AH 3/16/18 -----------------------------------------------
-		% Trigger a soft restart on arduino
+% NH 5/12/25 -----------------------------------------------
+		% Trigger ChR2 stim
 		function ChR2(obj)
-			obj.SendMessage('C')
-		end
+			obj.SendMessage('D')
+        end
+
+        %Trigger Chrimson stim
+        function Chrimson(obj)
+            obj.SendMessage('C')
+        end
 % ----------------------------------------------------------
-% AH 5/2/18 -----------------------------------------------
-		% Trigger a soft restart on arduino
+% NH 5/12/18 -----------------------------------------------
+		% Trigger Optotaging 
 		function Optotag(obj)
-			obj.SendMessage('T')
+			obj.SendMessage('L')
+        end
+% NH 5/19/18 -----------------------------------------------
+        function Juice(obj)
+            obj.SendMessage('J')
+        end
+% DS 08/25 -----------------------------------------------
+function DanTag(obj)
+            obj.SendMessage('M')
+        end
+        		% Send optogenetic pulse train
+		% function success = OptogenStim(obj)
+		% 	if obj.OptogenStimAvailable()
+			% 	if obj.DebugMode
+        %         	disp('Sent stim command')
+        %         end
+			% 	obj.SendMessage('L')
+        %         success = true;
+        %     else
+        %         warning('Cannot stim')
+        %         success = false;
+        %     end
+		% end
+
+		function canStim = OptogenStimAvailable(obj)
+			if obj.Connected
+                if obj.IsMotorController
+                    canStim = false;
+                    return
+                end
+				if strcmpi(obj.StateNames{obj.GetState()}, 'IDLE')
+					canStim = true;
+				else
+					canStim = false;
+				end
+			else
+				canStim = false;
+			end
 		end
-% ----------------------------------------------------------
-
 	end
-
+% ----------------------------------------------------------
 	methods (Static)
 
 		function port = findFirstArduinoPort()

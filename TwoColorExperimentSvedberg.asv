@@ -1,0 +1,1203 @@
+classdef TwoColorExperimentSvedberg < handle
+    properties
+        Path = ''
+        LaserArduino
+        Params
+        Results
+        Log
+        Plan
+    end
+
+    properties (Transient, Hidden)
+        LaserInterface
+        PowerMeter
+        Listeners
+    end
+
+    methods
+        function obj = TwoColorExperimentSvedberg(varargin)
+            p = inputParser();
+            p.addParameter('offline', false, @islogical)
+            p.addParameter('laserCOM', 'COM5', @ischar)
+            p.addParameter('noGUI', false, @islogical)
+            p.parse(varargin{:})
+            r = p.Results;
+
+            if r.offline
+                return
+            end
+
+            obj.connect(r.laserCOM, false, r.noGUI);
+
+            [file, path] = uiputfile(sprintf('expname_%s.mat', datestr(now, 'yyyymmdd')), 'Choose autosave path:');
+            if file == 0
+                return
+            end
+            obj.Path = [path, file];
+        end
+
+        function connect(obj, laserCOM, debug, noGUI)
+            if nargin < 4
+                debug = false;
+            end
+            obj.LaserInterface = OptogeneticsController('COM', laserCOM, 'noGUI', noGUI);
+            obj.LaserArduino = obj.LaserInterface.Arduino;
+            obj.LaserArduino.DebugMode = debug;
+
+            requiredParams = [ ...
+                {'_DEBUG','OPTO_ENABLED','CANCEL_ENABLED','CHRIMSON_NUM_PULSES', 'CHRIMSON_PULSE_WIDTH', 'CHRIMSON_IPI'}, ...
+                {'CHR2_NUM_PULSES', 'CHR2_PULSE_WIDTH', 'CHR2_IPI'}, ...
+                {'CHRIMSON_CHR2_NUM_PULSES','CHRIMSON_CHR2_PULSE_WIDTH','CHRIMSON_CHR2_IPI'}, ...
+                {'CHRIMSON_AOUT_1_VALUE', 'CHRIMSON_AOUT_2_VALUE', 'CHRIMSON_AOUT_3_VALUE'}, ...
+                {'CHRIMSON_AOUT_4_VALUE', 'CHRIMSON_AOUT_5_VALUE', 'CHRIMSON_AOUT_6_VALUE'}, ...
+                {'CHR2_AOUT_1_VALUE', 'CHR2_AOUT_2_VALUE', 'CHR2_AOUT_3_VALUE'}, ...
+                {'CHR2_AOUT_4_VALUE', 'CHR2_AOUT_5_VALUE', 'CHR2_AOUT_6_VALUE'}, ....
+                {'STIM_TRAIN_DELAY','PHOTOMETRY_ON','PHOT_TOGGLE_DELAY'}, ...
+                {'CHRIMSON_TRAINS_BEFORE_CHR2','CHRIMSON_TRAINS_AFTER_CHR2','CHR2_NUM_TRAINS'}
+            ];
+
+            fprintf('Waiting for parameter sync from Arduino...\n');
+            timeout = tic;
+            while true
+                currentParams = obj.LaserArduino.ParamNames;
+                if all(ismember(requiredParams, currentParams))
+                    break
+                end
+                pause(0.1);
+                if toc(timeout) > 10
+                    missing = setdiff(requiredParams, currentParams);
+                    warning('Timed out waiting for parameters. Missing: %s', strjoin(missing, ', '));
+                    break
+                end
+            end
+
+            disp('Received parameter names from Arduino:')
+            disp(obj.LaserArduino.ParamNames(:))
+        end
+
+        % Utility to fetch the current value of a named Arduino parameter
+        function value = getParamValue(obj, name)
+            idx = find(strcmpi(obj.LaserArduino.ParamNames, name), 1);
+            assert(~isempty(idx), 'Parameter "%s" not found on Arduino.', name)
+            value = obj.LaserArduino.ParamValues(idx);
+        end
+
+        % Runs one stimulation train.
+        % Red (channel 1) uses 5 hardcoded AOUT pulses via CHRIMSON_AOUT_X_VALUE.
+        % Blue (channel 2) uses one fixed AOUT value and variable pulse count.
+        function logEntry = runStimTrain(obj, iPower, iLaser, varargin)
+            % Runs a stimulation train and logs result
+            % Chrimson = channel 1, uses 5 AOUTs; ChR2 = channel 2, single AOUT
+        
+            p = inputParser();
+            p.KeepUnmatched = true;
+            p.addParameter('preTrainDelay', [], @isnumeric);
+            p.addParameter('postTrainDelay', [], @isnumeric);
+            p.parse(varargin{:});
+            r = p.Results;
+            DEBUG = true;
+        
+            % Upload param overrides to Arduino
+            unmatchedFields = fieldnames(p.Unmatched);
+            for i = 1:length(unmatchedFields)
+                paramName = unmatchedFields{i};
+                paramValue = p.Unmatched.(paramName);
+                if DEBUG
+                    fprintf('Updating Ardunio param: %s = %d\n', paramName, paramValue);
+                end
+                obj.setParam('laser', paramName, paramValue);
+            end
+            obj.LaserArduino.SendMessage('O');  % Notify Arduino param update complete
+        
+            if DEBUG
+                fprintf('[%s] Starting stim: Channel=%d, PowerIndex=%d\n', ...
+                    datestr(now, 'HH:MM:SS'), iLaser, iPower);
+            end
+        
+            % Pre-train delay
+            if isempty(r.preTrainDelay)
+                r.preTrainDelay = obj.getParamValue('STIM_TRAIN_DELAY') / 1000;
+            end
+            pause(r.preTrainDelay);
+        
+            % Trigger stim
+            for t = 1:100
+                state = obj.LaserArduino.StateNames{obj.LaserArduino.GetState()};
+                if strcmpi(state, 'IDLE') || strcmpi(state, 'WAIT_REQUEST')
+                    break
+                end
+                pause(0.01);
+            end
+            if iLaser == 1
+                obj.LaserArduino.SendMessage('C');  % Chrimson
+            else
+                obj.LaserArduino.SendMessage('D');  % ChR2
+            end
+        
+            % Post-train delay
+            if isempty(r.postTrainDelay)
+                r.postTrainDelay = obj.getParamValue('STIM_TRAIN_DELAY') / 1000;
+            end
+            pause(r.postTrainDelay);
+        
+            obj.analogWrite(iLaser, 0);  % Turn off analog output
+        
+            % --- Logging ---
+            logEntry = struct();
+            logEntry.timestamp = datetime();
+            logEntry.iPower = iPower;
+            logEntry.iLaser = iLaser;
+            logEntry.channel = iLaser;
+        
+            if isfield(obj.Params, 'wavelengths') && length(obj.Params.wavelengths) >= iLaser
+                logEntry.wavelength = obj.Params.wavelengths(iLaser);
+            else
+                logEntry.wavelength = NaN;
+            end
+        
+            % Log target power
+            if iLaser == 1 && isfield(obj.Params, 'targetPowers_Chrimson') && length(obj.Params.targetPowers_Chrimson) >= iPower
+                logEntry.targetPower = obj.Params.targetPowers_Chrimson(iPower);
+            elseif iLaser == 2 && isfield(obj.Params, 'targetPowers_ChR2') && length(obj.Params.targetPowers_ChR2) >= iPower
+                logEntry.targetPower = obj.Params.targetPowers_ChR2(iPower);
+            else
+                logEntry.targetPower = NaN;
+            end
+        
+            % Log calibrated AOUT value
+            if isfield(obj.Results, 'aoutValues') && size(obj.Results.aoutValues,1) >= iPower && size(obj.Results.aoutValues,2) >= iLaser
+                logEntry.calibratedAout = obj.Results.aoutValues(iPower, iLaser);
+            else
+                logEntry.calibratedAout = NaN;
+            end
+        
+            % Log validated power if available
+            if isfield(obj.Results, 'powersValidation') && size(obj.Results.powersValidation,1) >= iPower && size(obj.Results.powersValidation,2) >= iLaser
+                logEntry.validatedPower = obj.Results.powersValidation(iPower, iLaser);
+            else
+                logEntry.validatedPower = NaN;
+            end
+        
+            % --- Chrimson-specific ladder logging ---
+            if iLaser == 1
+                logEntry.stimType = 'chrimsonLadder';
+                ladderAOUTs = NaN(1, 5);
+                ladderPowers = NaN(1, 5);
+        
+                for j = 1:5
+                    paramName = sprintf('CHRIMSON_AOUT_%d_VALUE', j);
+                    idx = find(strcmpi(obj.LaserArduino.ParamNames, paramName), 1);
+                    if ~isempty(idx)
+                        ladderAOUTs(j) = obj.LaserArduino.ParamValues(idx);
+                    end
+        
+                    if isfield(obj.Params, 'targetPowers_Chrimson') && j <= numel(obj.Params.targetPowers_Chrimson)
+                        ladderPowers(j) = obj.Params.targetPowers_Chrimson(j) * 1e3;
+                    end
+                end
+        
+                logEntry.chrimsonAouts = ladderAOUTs;
+                logEntry.chrimsonPowers_mW = ladderPowers;
+            end
+        
+            % Add to Log
+            if isempty(obj.Log)
+                obj.Log = {logEntry};
+            elseif isstruct(obj.Log)
+                obj.Log = [{obj.Log}, {logEntry}];  % Convert existing to cell
+            else
+                obj.Log{end+1} = logEntry;
+            end
+        
+            if DEBUG
+                fprintf('[%s] Stim finished.\n', datestr(now, 'HH:MM:SS'));
+            end
+        end
+
+        function analogWrite(obj, channel, value)
+            assert(ismember(channel, [1, 2]), 'channel must be 1 or 2')
+            assert(isnumeric(value) && isscalar(value) && mod(value, 1) == 0, 'value must be an integer')
+            obj.LaserArduino.SendMessage(sprintf('A %i %i', channel, value));
+        end
+
+        function setParam(obj, arduinoName, paramName, value)
+            assert(strcmpi(arduinoName, 'laser'), 'Only "laser" arduino is supported in this version.')
+            arduino = obj.LaserArduino;
+            paramIndex = find(strcmpi(arduino.ParamNames, paramName));
+            assert(~isempty(paramIndex), 'Could not find Arduino parameter with name: "%s".', paramName)
+            assert(mod(value, 1)==0, 'Param value must be an integer instead of %g.', value)
+            arduino.SetParam(paramIndex, value);
+            obj.LaserArduino.ParamValues(1,paramIndex) = value;  % Manually reflect update in ParamValues array
+        end
+
+        function save(obj)
+            save(obj.Path, 'obj');
+        end
+        function aout = getAoutFor(obj, laser, targetPower_mW)
+            % Retrieve calibrated AOUT for laser [1 or 2] at target power in mW
+        
+            assert(ismember(laser, [1, 2]), 'Laser must be 1 (Chrimson) or 2 (ChR2).');
+            targetPower_W = targetPower_mW * 1e-3;
+        
+            % Pick laser-specific target powers
+            if laser == 1
+                powerVec = obj.Params.targetPowers_Chrimson;
+            else
+                powerVec = obj.Params.targetPowers_ChR2;
+            end
+        
+            assert(~isempty(powerVec), 'No targetPowers defined for laser %d.', laser);
+        
+            % Find exact match
+            matchIdx = find(abs(powerVec - targetPower_W) < 1e-9, 1);
+            assert(~isempty(matchIdx), ...
+                'Target power %.3f mW not found in calibration results for laser %d.', targetPower_mW, laser);
+        
+            % Look up AOUT
+            aout = obj.Results.aoutValues(matchIdx, laser);
+            assert(~isnan(aout), 'AOUT for target power %.3f mW (laser %d) is missing or invalid.', ...
+                targetPower_mW, laser);
+        end
+
+           
+        function calibrate(obj, varargin)
+            p = inputParser();
+            p.addParameter('targetPowers', [0.5, 2, 4, 10] * 1e-3, @isnumeric)
+            p.addParameter('wavelengths', [593, 473], @isnumeric)
+            p.addParameter('aoutMin', 500, @isnumeric)
+            p.addParameter('aoutMax', 4095, @isnumeric)
+            p.addParameter('tolerance', 2.5e-2, @isnumeric)
+            p.addParameter('stepSize', 250, @isnumeric)
+            p.addParameter('maxIters', 50, @isnumeric)
+            p.addParameter('powerMeterThreshold', 50e-6, @isnumeric);
+            p.addParameter('maxStationaryIters', 5, @isnumeric);
+            p.parse(varargin{:});
+            obj.Params = p.Results;
+
+            tp = obj.Params;
+            nPowers = length(tp.targetPowers);
+            nChannels = length(tp.wavelengths);
+
+            results.aoutValues = zeros(nPowers, nChannels);
+            results.powers = zeros(nPowers, nChannels);
+
+            meter = ThorlabsPowerMeter;
+            device = meter.listdevices;
+            m = meter.connect(device);
+            m.setAttenuation(0);
+            m.setAverageTime(0.01);
+            m.setTimeout(1000);
+
+            for iLaser = 1:nChannels
+                m.setWaveLength(tp.wavelengths(iLaser));
+                pause(3);
+                for iPower = 1:nPowers
+                    target = tp.targetPowers(iPower);
+                    aout = 1000;
+                    for iter = 1:tp.maxIters
+                        obj.analogWrite(iLaser, aout);
+                        pause(0.5);
+                        m.updateReading(0);
+                        pwr = m.meterPowerReading;
+                        delta = target - pwr;
+                        if abs(delta) < tp.tolerance * target
+                            break
+                        end
+                        aout = round(aout + sign(delta) * tp.stepSize);
+                        aout = min(max(aout, tp.aoutMin), tp.aoutMax);
+                    end
+                    results.aoutValues(iPower, iLaser) = aout;
+                    results.powers(iPower, iLaser) = m.meterPowerReading;
+                end
+            end
+            obj.analogWrite(1, 0);
+            obj.analogWrite(2, 0);
+            m.disconnect;
+            obj.PowerMeter = [];
+            obj.Results = results;
+        end
+
+        function validate(obj, varargin)
+            p = inputParser();
+            p.addParameter('validationDelay', 4, @isnumeric)
+            p.parse(varargin{:});
+            delay = p.Results.validationDelay;
+
+            tp = obj.Params;
+            results = obj.Results;
+            nPowers = length(tp.targetPowers);
+            nChannels = length(tp.wavelengths);
+
+            meter = ThorlabsPowerMeter;
+            device = meter.listdevices;
+            m = meter.connect(device);
+            m.setAttenuation(0);
+            m.setAverageTime(0.01);
+            m.setTimeout(1000);
+
+            results.powersValidation = zeros(nPowers, nChannels);
+            for iLaser = 1:nChannels
+                m.setWaveLength(tp.wavelengths(iLaser));
+                pause(3);
+                for iPower = 1:nPowers
+                    aout = results.aoutValues(iPower, iLaser);
+                    obj.analogWrite(iLaser, aout);
+                    pause(delay);
+                    m.updateReading(0);
+                    results.powersValidation(iPower, iLaser) = m.meterPowerReading;
+                end
+            end
+            obj.analogWrite(1, 0);
+            obj.analogWrite(2, 0);
+            m.disconnect;
+            obj.PowerMeter = [];
+            obj.Results = results;
+        end
+
+        function runCHR2CalibrationSession(obj, varargin)
+            p = inputParser();
+            p.addParameter('repeats', 3, @isnumeric);
+            p.addParameter('randomize', true, @islogical);
+            p.addParameter('iti', 5, @isnumeric);
+            p.parse(varargin{:});
+            r = p.Results;
+        
+            if isempty(obj.Results) || ~isfield(obj.Results, 'aoutValues')
+                error('No calibration data found. Run calibrateChR2() or mergeCalibration() first.');
+            end
+        
+            iLaser = 2;  % ChR2
+            assert(isfield(obj.Params, 'targetPowers_ChR2'), ...
+                'targetPowers_ChR2 not found. Make sure you used mergeCalibration or calibrateChR2.');
+            targetPowers = obj.Params.targetPowers_ChR2;
+            nPowers = numel(targetPowers);
+        
+            conditions = [];
+            for i = 1:r.repeats
+                block = 1:nPowers;
+                if r.randomize
+                    block = block(randperm(nPowers));
+                end
+                conditions = [conditions, block];  % Append each shuffled block
+            end
+
+        
+            for i = 1:length(conditions)
+                iPower = conditions(i);
+                power_mW = targetPowers(iPower) * 1e3;
+        
+                aout = obj.getAoutFor(iLaser, power_mW);
+                fprintf('Running ChR2 train %d/%d: Power=%.1fmW (Index=%d), AOUT=%d\n', ...
+                    i, length(conditions), power_mW, iPower, aout);
+        
+                obj.runStimTrain(iPower, iLaser, 'CHR2_AOUT_VALUE', aout);
+        
+                if i < length(conditions)
+                    pause(r.iti);
+                end
+            end
+        end
+
+
+        function runChrimsonCalibrationSession(obj, varargin)
+            p = inputParser();
+            p.addParameter('repeats', 3, @isnumeric);
+            p.addParameter('randomize', true, @islogical);
+            p.addParameter('iti', 5, @isnumeric);
+            p.parse(varargin{:});
+            r = p.Results;
+        
+            if isempty(obj.Results) || ~isfield(obj.Results, 'aoutValues')
+                error('No calibration data found. Run calibrateChrimson() or mergeCalibration() first.');
+            end
+        
+            iLaser = 1;  % Chrimson
+            assert(isfield(obj.Params, 'targetPowers_Chrimson'), ...
+                'targetPowers_Chrimson not found. Ensure you used mergeCalibration or calibrateChrimson.');
+            targetPowers = obj.Params.targetPowers_Chrimson;
+            nPowers = numel(targetPowers);
+        
+            conditions = repmat(1:nPowers, 1, r.repeats);
+            if r.randomize
+                conditions = conditions(randperm(length(conditions)));
+            end
+        
+            for i = 1:length(conditions)
+                iPower = conditions(i);
+                power_mW = targetPowers(iPower) * 1e3;
+        
+                aout = obj.getAoutFor(iLaser, power_mW);
+                fprintf('Running Chrimson train %d/%d: Power=%.1fmW (Index=%d), AOUT=%d\n', ...
+                    i, length(conditions), power_mW, iPower, aout);
+        
+                obj.runStimTrain(iPower, iLaser);  % No param override needed for Chrimson
+        
+                if i < length(conditions)
+                    pause(r.iti);
+                end
+            end
+        end
+
+
+       function close(obj)
+            obj.LaserInterface.ArduinoClose([], [], true);
+       end
+        
+       function calibrateChrimson(obj, varargin)
+                % Calibrates exactly 5 Chrimson (red laser) output levels using a power meter
+            
+                % --- Parse Parameters ---
+                p = inputParser();
+                p.addParameter('targetPowers', [0.5, 2, 4, 10, 15] * 1e-3, @isnumeric)
+                p.addParameter('stepDelays', [0.5, 8], @(x) isnumeric(x) && length(x) == 2)
+                p.addParameter('aoutMin', 500, @isnumeric)
+                p.addParameter('aoutMax', 4125, @isnumeric)
+                p.addParameter('tolerance', 2.5e-2, @isnumeric)
+                p.addParameter('maxIters', 100, @isnumeric)
+                p.addParameter('maxStationaryIters', 5, @isnumeric)
+                p.addParameter('stepSizeMultiplierDist', 50000, @isnumeric)
+                p.addParameter('stepSizeMultiplierGrad', 0.25, @isnumeric)
+                p.addParameter('stepSizeConst', 250)
+                p.addParameter('powerMeterThreshold', 50e-6)
+                p.addParameter('wavelengths', [555,465], @isnumeric)
+            
+                p.parse(varargin{:});
+                p = p.Results;
+                obj.Params = p;
+            
+                % --- Enforce exactly 6 strictly increasing powers ---
+                assert(length(p.targetPowers) == 6, 'Chrimson calibration requires exactly 6 targetPowers.');
+                assert(issorted(p.targetPowers) && all(diff(p.targetPowers) > 0), ...
+                    'targetPowers must be strictly increasing.');
+            
+                iLaser = 1;  % Chrimson
+                nPowers = length(p.targetPowers);
+                results.aoutValues = zeros(nPowers, 2);
+                results.targetReached = false(nPowers, 2);
+                results.powers = zeros(nPowers, 2);
+            
+                % --- Setup Power Meter ---
+                if ~isempty(obj.PowerMeter)
+                    try
+                        obj.PowerMeter.disconnect();
+                    end
+                end
+                meterList = ThorlabsPowerMeter;
+                deviceDescription = meterList.listdevices;
+                meter = meterList.connect(deviceDescription);
+                obj.PowerMeter = meter;
+            
+                meter.setDispBrightness(0.3);
+                meter.setAttenuation(0);
+                meter.setAverageTime(0.01);
+                meter.setTimeout(1000);
+                meter.setWaveLength(555);
+                meter.sensorInfo;
+                meter.setPowerAutoRange(1);
+                pause(5);
+            
+                % --- Calibration Loop ---
+                for iPower = 1:nPowers
+                    obj.analogWrite(iLaser, 0);
+            
+                    % Reuse previous AOUT or ramp-up to detect light
+                    if iPower == 1
+                        aoutValue = p.aoutMin;
+                        stepUp = 50;
+                        pwr = 0;
+                        while aoutValue <= p.aoutMax
+                            obj.analogWrite(iLaser, aoutValue);
+                            pause(p.stepDelays(iLaser));
+                            meter.updateReading(0);
+                            pwr = meter.meterPowerReading;
+                            fprintf('[RAMP] AOUT = %d → Power = %.3f µW\n', aoutValue, pwr * 1e6);
+                            if pwr >= p.powerMeterThreshold
+                                fprintf('[RAMP] Detected light above threshold (%.2f µW). Starting calibration.\n', pwr * 1e6);
+                                break;
+                            end
+                            aoutValue = aoutValue + stepUp;
+                        end
+                        if pwr < p.powerMeterThreshold
+                            warning('Unable to detect light even at AOUT = %d. Skipping this target.', aoutValue);
+                            continue;
+                        end
+                    else
+                        aoutValue = results.aoutValues(iPower - 1, iLaser);
+                    end
+            
+                    % --- Main Calibration Loop ---
+                    targetPwr = p.targetPowers(iPower);
+                    aoutValueOld = 0;
+                    pwrOld = NaN;
+                    dAout = 1;
+                    i = 0;
+                    nStationaryIters = 0;
+            
+                    while true
+                        if i > p.maxIters || nStationaryIters > p.maxStationaryIters
+                            warning('Failed to reach target after %i iterations. Target = %.4f, Last power = %.4f', ...
+                                i, targetPwr, pwr);
+                            break
+                        end
+            
+                        pause(p.stepDelays(iLaser));
+                        meter.updateReading(0);
+                        assert(strcmp(meter.meterPowerUnit, 'W'), 'Power meter unit is "%s" instead of "W"', meter.meterPowerUnit);
+                        obj.analogWrite(iLaser, 0) %turn off LED
+                        pause(0.5) %give LED brief moment to cool off
+                        pwrOld = pwr;
+                        pwr = meter.meterPowerReading;
+                        i = i + 1;
+                        dist = pwr - targetPwr;
+                        aoutValueOld = aoutValue;
+                        dPwr = pwr - pwrOld;
+            
+                        % --- Step size logic ---
+                        if meter.meterPowerReading < p.powerMeterThreshold
+                            thisStepSize = p.stepSizeConst;
+                            stepType = 'constStep';
+                        elseif isnan(dPwr)
+                            thisStepSize = -sign(dist) * max(1, ceil(p.stepSizeMultiplierDist * abs(dist)));
+                            stepType = 'distStep';
+                        else
+                            thisStepSize = -sign(dist) * max(1, ceil(abs(p.stepSizeMultiplierGrad * dist / (dPwr / dAout))));
+                            stepType = 'gradStep';
+                        end
+            
+                        % Clamp step size
+                        thisStepSize = min(p.stepSizeConst, thisStepSize);
+                        thisStepSize = max(-p.stepSizeConst, thisStepSize);
+            
+                        % Print calibration status
+                        fprintf('%gnm, i=%i, tgt=%.3fmW, df=%.3fmW, %s=%i, AOUT(%i)=%i, raw=%.3fmW\n', ...
+                            p.wavelengths(iLaser), i, targetPwr * 1e3, dist * 1e3, ...
+                            stepType, thisStepSize, iLaser, aoutValue, pwr * 1e3);
+            
+                        if abs(dist) > p.tolerance * targetPwr
+                            aoutValue = aoutValue + thisStepSize;
+                            aoutValue = min(aoutValue, p.aoutMax);
+                            aoutValue = max(aoutValue, p.aoutMin);
+                            dAout = aoutValue - aoutValueOld;
+                            if dAout == 0
+                                nStationaryIters = nStationaryIters + 1;
+                            else
+                                nStationaryIters = 0;
+                            end
+                        else
+                            fprintf('Target reached in %i iterations.\n', i);
+                            results.targetReached(iPower, iLaser) = true;
+                            break
+                        end
+            
+                        obj.analogWrite(iLaser, aoutValue);
+                    end
+            
+                    pause(p.stepDelays(iLaser));
+                    meter.updateReading(0);
+                    results.aoutValues(iPower, iLaser) = aoutValue;
+                    results.powers(iPower, iLaser) = meter.meterPowerReading;
+
+                end
+            
+                % --- Cleanup ---
+                obj.analogWrite(iLaser, 0);
+                meter.disconnect();
+                obj.PowerMeter = [];
+                obj.Results = results;
+            end
+
+
+
+
+            function calibrateChR2(obj, varargin)
+                % --- Parse Parameters ---
+                p = inputParser();
+                p.addParameter('targetPowers', [0.5, 2, 4, 10] * 1e-3, @isnumeric)
+                p.addParameter('stepDelays', [0.5, 8], @(x) isnumeric(x) && length(x) == 2)
+                p.addParameter('aoutMin', 500, @isnumeric)
+                p.addParameter('aoutMax', 4095, @isnumeric)
+                p.addParameter('tolerance', 2.5e-2, @isnumeric)
+                p.addParameter('maxIters', 100, @isnumeric)
+                p.addParameter('maxStationaryIters', 5, @isnumeric)
+                p.addParameter('stepSizeMultiplierDist', 50000, @isnumeric)
+                p.addParameter('stepSizeMultiplierGrad', 0.25, @isnumeric)
+                p.addParameter('stepSizeConst', 250)
+                p.addParameter('powerMeterThreshold', 50e-6)
+                p.addParameter('wavelengths', [555, 465], @isnumeric)
+            
+                p.parse(varargin{:});
+                p = p.Results;
+                obj.Params = p;
+            
+                assert(issorted(p.targetPowers) && all(diff(p.targetPowers) > 0), ...
+                    'targetPowers must be strictly increasing for progressive calibration.');
+            
+                iLaser = 2;  % ChR2
+                nPowers = length(p.targetPowers);
+                results.aoutValues = zeros(nPowers, 2);
+                results.targetReached = false(nPowers, 2);
+                results.powers = zeros(nPowers, 2);
+            
+                % --- Setup Power Meter ---
+                if ~isempty(obj.PowerMeter)
+                    try
+                        obj.PowerMeter.disconnect();
+                    end
+                end
+                meterList = ThorlabsPowerMeter;
+                deviceDescription = meterList.listdevices;
+                meter = meterList.connect(deviceDescription);
+                obj.PowerMeter = meter;
+                meter.setDispBrightness(0.3);
+                meter.setAttenuation(0);
+                meter.setAverageTime(0.01);
+                meter.setTimeout(1000);
+                meter.setWaveLength(465);
+                meter.sensorInfo;
+                meter.setPowerAutoRange(1);
+                pause(5);
+            
+                % --- Calibration Loop ---
+                for iPower = 1:nPowers
+                    obj.analogWrite(iLaser, 0);
+            
+                    % Reuse previous AOUT for faster convergence
+                    if iPower == 1
+                        aoutValue = p.aoutMin;
+            
+                        % Stepwise DAC ramp-up (only for first power target)
+                        stepUp = 50;
+                        pwr = 0;
+                        while aoutValue <= p.aoutMax
+                            obj.analogWrite(iLaser, aoutValue);
+                            pause(p.stepDelays(iLaser));
+                            meter.updateReading(0);
+                            pwr = meter.meterPowerReading;
+            
+                            fprintf('[RAMP] AOUT = %d → Power = %.3f µW\n', aoutValue, pwr * 1e6);
+            
+                            if pwr >= p.powerMeterThreshold
+                                fprintf('[RAMP] Detected light above threshold (%.2f µW). Starting calibration.\n', pwr * 1e6);
+                                break
+                            end
+            
+                            aoutValue = aoutValue + stepUp;
+                        end
+            
+                        if pwr < p.powerMeterThreshold
+                            warning('Unable to detect light even at AOUT = %d. Skipping this target.', aoutValue);
+                            continue;
+                        end
+                    else
+                        aoutValue = results.aoutValues(iPower - 1, iLaser);  % reuse last successful value
+                    end
+            
+                    % --- Main Calibration Loop ---
+                    targetPwr = p.targetPowers(iPower);
+                    aoutValueOld = 0;
+                    pwrOld = NaN;
+                    dAout = 1;
+                    i = 0;
+                    nStationaryIters = 0;
+            
+                    while true
+                        if i > p.maxIters || nStationaryIters > p.maxStationaryIters
+                            warning('Failed to reach target after %i iterations. Target = %.4f, Last power = %.4f', ...
+                                i, targetPwr, pwr);
+                            break
+                        end
+            
+                        pause(p.stepDelays(iLaser));
+                        meter.updateReading(0);
+                        assert(strcmp(meter.meterPowerUnit, 'W'), 'Power meter unit is "%s" instead of "W"', meter.meterPowerUnit);
+
+                        obj.analogWrite(iLaser, 0) %turn off LED
+                        pause(0.5) %give LED brief moment to cool off
+            
+                        pwrOld = pwr;
+                        pwr = meter.meterPowerReading;
+                        i = i + 1;
+                        dist = pwr - targetPwr;
+                        aoutValueOld = aoutValue;
+                        dPwr = pwr - pwrOld;
+            
+                        % Step size selection
+                        if isnan(pwr)
+                            thisStepSize = p.stepSizeConst;
+                            stepType = 'constStep';
+                        elseif isnan(dPwr) || dAout == 0
+                            thisStepSize = -sign(dist) * max(1, ceil(p.stepSizeMultiplierDist * abs(dist)));
+                            stepType = 'distStep';
+                        else
+                            thisStepSize = -sign(dist) * max(1, ceil(abs(p.stepSizeMultiplierGrad * dist / (dPwr / dAout))));
+                            stepType = 'gradStep';
+                        end
+            
+                        % Clamp step size
+                        thisStepSize = min(p.stepSizeConst, thisStepSize);
+                        thisStepSize = max(-p.stepSizeConst, thisStepSize);
+            
+                        % Diagnostic info
+                        fprintf('%gnm, i=%i, tgt=%.3fmW, df=%.3fmW, %s=%i, AOUT(%i)=%i, raw=%.3fmW\n', ...
+                            p.wavelengths(iLaser), i, targetPwr*1e3, dist*1e3, stepType, thisStepSize, iLaser, aoutValue, pwr*1e3);
+            
+                        if abs(dist) > p.tolerance * targetPwr
+                            aoutValue = aoutValue + thisStepSize;
+                            aoutValue = min(aoutValue, p.aoutMax);
+                            aoutValue = max(aoutValue, p.aoutMin);
+                            dAout = aoutValue - aoutValueOld;
+                            if dAout == 0
+                                nStationaryIters = nStationaryIters + 1;
+                            else
+                                nStationaryIters = 0;
+                            end
+                        else
+                            fprintf('Target reached in %i iterations.\n', i);
+                            results.targetReached(iPower, iLaser) = true;
+                            break
+                        end
+            
+                        obj.analogWrite(iLaser, aoutValue);
+                    end
+            
+                    pause(p.stepDelays(iLaser));
+                    meter.updateReading(0);
+                    results.aoutValues(iPower, iLaser) = aoutValue;
+                    results.powers(iPower, iLaser) = meter.meterPowerReading;
+
+                end
+            
+                % --- Cleanup ---
+                obj.analogWrite(iLaser, 0);
+                meter.disconnect();
+                obj.PowerMeter = [];
+                obj.Results = results;
+            end
+
+    
+            function results = validateChrimson(obj, varargin)
+                % --- Parse validation delay ---
+                p = inputParser();
+                p.addParameter('validationDelay', 4, @isnumeric);  % scalar or [chrimson, chr2]
+                p.parse(varargin{:});
+                delay = p.Results.validationDelay;
+            
+                % --- Load stored Params + Results ---
+                tp = obj.Params;
+                results = obj.Results;
+                iLaser = 1;  % Chrimson
+            
+                assert(~isempty(results), 'No calibration results found.');
+            
+                % --- Resolve delay per laser ---
+                if isscalar(delay)
+                    delay = [delay, delay];
+                end
+                delay = reshape(delay, 1, []);  % ensure row vector
+            
+                % --- Power Meter Setup ---
+                if ~isempty(obj.PowerMeter)
+                    try
+                        obj.PowerMeter.disconnect();
+                    end
+                end
+            
+                meterList = ThorlabsPowerMeter;
+                deviceDescription = meterList.listdevices;
+                meter = meterList.connect(deviceDescription);
+                obj.PowerMeter = meter;
+            
+                meter.setDispBrightness(0.3);
+                meter.setAttenuation(0);
+                meter.setAverageTime(0.01);
+                meter.setTimeout(1000);
+            
+                % Use correct Chrimson wavelength
+                if ~isfield(tp, 'wavelengths') || numel(tp.wavelengths) < 1
+                    warning('Missing wavelengths in Params. Defaulting to [590, 465].');
+                    tp.wavelengths = [590, 465];
+                end
+                meter.setWaveLength(tp.wavelengths(iLaser));
+                meter.sensorInfo;
+                meter.setPowerAutoRange(1);
+                pause(5);
+            
+                % --- Validate each power target ---
+                nPowers = length(tp.targetPowers);
+                if ~isfield(results, 'powersValidation') || size(results.powersValidation, 1) ~= nPowers
+                    results.powersValidation = NaN(nPowers, 2);  % [target x laser]
+                end
+            
+                for iPower = 1:nPowers
+                    obj.analogWrite(1, 0);
+                    obj.analogWrite(2, 0);
+            
+                    aout = results.aoutValues(iPower, iLaser);
+                    obj.analogWrite(iLaser, aout);
+                    pause(delay(iLaser));
+            
+                    meter.updateReading(0);
+                    val = meter.meterPowerReading;
+                    results.powersValidation(iPower, iLaser) = val;
+            
+                    fprintf('Chrimson: Tgt=%.2fmW, Cal=%.2fmW, Val=%.2fmW\n', ...
+                        tp.targetPowers(iPower)*1e3, ...
+                        results.powers(iPower, iLaser)*1e3, ...
+                        val*1e3);
+                end
+            
+                obj.analogWrite(1, 0);
+                obj.analogWrite(2, 0);
+                meter.disconnect();
+                obj.PowerMeter = [];
+                obj.Results = results;
+            end
+
+
+        
+          function results = validateChR2(obj, varargin)
+            % --- Parse validation delay ---
+            p = inputParser();
+            p.addParameter('validationDelay', 4, @isnumeric);  % scalar or [chrimson, chr2]
+            p.parse(varargin{:});
+            delay = p.Results.validationDelay;
+        
+            % --- Load stored Params + Results ---
+            tp = obj.Params;
+            results = obj.Results;
+            iLaser = 2;  % ChR2
+        
+            assert(~isempty(results), 'No calibration results found.');
+        
+            % --- Resolve delay per laser ---
+            if isscalar(delay)
+                delay = [delay, delay];
+            end
+            delay = reshape(delay, 1, []);  % ensure row vector
+        
+            % --- Power Meter Setup ---
+            if ~isempty(obj.PowerMeter)
+                try
+                    obj.PowerMeter.disconnect();
+                end
+            end
+        
+            meterList = ThorlabsPowerMeter;
+            deviceDescription = meterList.listdevices;
+            meter = meterList.connect(deviceDescription);
+            obj.PowerMeter = meter;
+        
+            meter.setDispBrightness(0.3);
+            meter.setAttenuation(0);
+            meter.setAverageTime(0.01);
+            meter.setTimeout(1000);
+        
+            % Use correct ChR2 wavelength
+            if ~isfield(tp, 'wavelengths') || numel(tp.wavelengths) < 2
+                warning('Missing or incomplete wavelengths in Params. Defaulting to [555, 465].');
+                tp.wavelengths = [555, 465];
+            end
+            meter.setWaveLength(tp.wavelengths(iLaser));
+            meter.sensorInfo;
+            meter.setPowerAutoRange(1);
+            pause(5);
+        
+            % --- Validate each power target ---
+            nPowers = length(tp.targetPowers);
+            if ~isfield(results, 'powersValidation') || size(results.powersValidation, 1) ~= nPowers
+                results.powersValidation = NaN(nPowers, 2);  % [target x laser]
+            end
+        
+            for iPower = 1:nPowers
+                obj.analogWrite(1, 0);
+                obj.analogWrite(2, 0);
+        
+                aout = results.aoutValues(iPower, iLaser);
+                obj.analogWrite(iLaser, aout);
+                pause(delay(iLaser));
+        
+                meter.updateReading(0);
+                val = meter.meterPowerReading;
+                results.powersValidation(iPower, iLaser) = val;
+        
+                fprintf('ChR2: Tgt=%.2fmW, Cal=%.2fmW, Val=%.2fmW\n', ...
+                    tp.targetPowers(iPower)*1e3, ...
+                    results.powers(iPower, iLaser)*1e3, ...
+                    val*1e3);
+            end
+        
+            obj.analogWrite(1, 0);
+            obj.analogWrite(2, 0);
+            meter.disconnect();
+            obj.PowerMeter = [];
+            obj.Results = results;
+        end
+
+
+            function saveCalibration(obj, filename)
+                if nargin < 2
+                    [file, path] = uiputfile('*.mat', 'Save calibration data as:');
+                    if isequal(file, 0)
+                        fprintf('Save cancelled.\n');
+                        return;
+                    end
+                    filename = fullfile(path, file);
+                end
+            
+                Results = obj.Results;
+                Params = obj.Params;
+                save(filename, 'Results', 'Params');
+                fprintf('Saved calibration data to: %s\n', filename);
+            end
+
+            function runOptoLadder(obj, laserLabel, chr2Aout)
+                % runOptoLadder('ChR2', 300)
+                % Sets 5 sorted calibrated Chrimson AOUTs, sets manual ChR2 AOUT,
+                % triggers opto_ladder_state(), and logs all settings.
+            
+                % --- Validate input ---
+                assert(ischar(laserLabel) || isstring(laserLabel), ...
+                    'First input must be "ChR2"');
+                laserLabel = lower(string(laserLabel));
+                assert(strcmp(laserLabel, "chr2"), ...
+                    'Only ChR2 AOUT is set manually. Chrimson values come from calibration.');
+                assert(isscalar(chr2Aout) && isnumeric(chr2Aout), ...
+                    'Second input must be numeric ChR2 AOUT value.');
+            
+                % --- Validate calibration ---
+                assert(isfield(obj.Params, 'targetPowers'), 'No calibrated targetPowers found.');
+                assert(isfield(obj.Params, 'targetPowers_Chrimson') && ...
+                   length(obj.Params.targetPowers_Chrimson) == 5, ...
+                   'Expected exactly 5 Chrimson calibration targetPowers.');
+
+            
+                % --- Sort Chrimson powers and assign AOUTs ---
+                chrimsonPowers_mW = sort(obj.Params.targetPowers_Chrimson * 1e3);  % ascending
+                assignedAOUTs = zeros(1, 5);
+                for i = 1:5
+                    aout = obj.getAoutFor(1, chrimsonPowers_mW(i));
+                    paramName = sprintf('CHRIMSON_AOUT_%d_VALUE', i);
+                    obj.setParam('laser', paramName, aout);
+                    assignedAOUTs(i) = aout;
+                    fprintf('Set %s = %d (%.1f mW)\n', paramName, aout, chrimsonPowers_mW(i));
+                end
+            
+                % --- Set ChR2 AOUT manually ---
+                obj.setParam('laser', 'CHR2_AOUT_VALUE', round(chr2Aout));
+                fprintf('Set CHR2_AOUT_VALUE = %d (manual)\n', round(chr2Aout));
+            
+                % --- Read stim protocol structure values from Arduino ---
+                before = obj.getParamValue('CHRIMSON_TRAINS_BEFORE_CHR2');
+                after  = obj.getParamValue('CHRIMSON_TRAINS_AFTER_CHR2');
+                nChR2  = obj.getParamValue('CHR2_NUM_TRAINS');
+                delay  = obj.getParamValue('STIM_TRAIN_DELAY');
+            
+                % --- Push parameters and trigger ---
+                obj.LaserArduino.SendMessage('O');
+                obj.LaserArduino.SendMessage('L');
+            
+                % --- Display summary ---
+                fprintf('✅ Opto ladder triggered with:\n');
+                fprintf('  ChR2 AOUT = %d\n', round(chr2Aout));
+                for i = 1:5
+                    fprintf('  Chrimson AOUT #%d = %d (%.1f mW)\n', i, assignedAOUTs(i), chrimsonPowers_mW(i));
+                end
+                fprintf('  Train Structure: ChrimsonBefore=%d, ChR2=%d, ChrimsonAfter=%d\n', before, nChR2, after);
+                fprintf('  Stim Train Delay: %.1f ms\n', delay);
+            
+                % --- Log all parameters ---
+                logEntry = struct();
+                logEntry.timestamp = datetime();
+                logEntry.type = 'opto_ladder';
+                logEntry.chr2Aout = round(chr2Aout);
+                logEntry.chrimsonPowers_mW = chrimsonPowers_mW;
+                logEntry.chrimsonAouts = assignedAOUTs;
+                logEntry.chrimsonTrainsBefore = before;
+                logEntry.chrimsonTrainsAfter = after;
+                logEntry.chr2Trains = nChR2;
+                logEntry.stimTrainDelayMs = delay;
+            
+                if isempty(obj.Log)
+                    obj.Log = {logEntry};
+                elseif isstruct(obj.Log)
+                    obj.Log = [{obj.Log}, {logEntry}];  % Convert existing struct to cell array
+                else
+                    obj.Log{end+1} = logEntry;
+                end
+
+            end
+            function printLastOptoLadderLog(obj)
+            % Print a summary of the most recent opto_ladder run from the log
+        
+            if isempty(obj.Log)
+                fprintf('⚠️  No log entries found.\n');
+                return;
+            end
+        
+            last = obj.Log(end);
+        
+            if ~isfield(last, 'type') || ~strcmp(last.type, 'opto_ladder')
+                fprintf('⚠️  Last log entry is not from opto_ladder.\n');
+                return;
+            end
+        
+            fprintf('\n🧪 Last Opto Ladder Run Summary:\n');
+            fprintf('  Timestamp:        %s\n', datestr(last.timestamp, 'yyyy-mm-dd HH:MM:SS'));
+            fprintf('  ChR2 AOUT:        %d\n', last.chr2Aout);
+            fprintf('  Chrimson Powers:  %s mW\n', strjoin(string(last.chrimsonPowers_mW), ', '));
+            fprintf('  Chrimson AOUTs:   %s\n', strjoin(string(last.chrimsonAouts), ', '));
+            fprintf('  Trains Before:    %d\n', last.chrimsonTrainsBefore);
+            fprintf('  ChR2 Trains:      %d\n', last.chr2Trains);
+            fprintf('  Trains After:     %d\n', last.chrimsonTrainsAfter);
+            fprintf('  Stim Delay (ms):  %.1f\n', last.stimTrainDelayMs);
+            fprintf('✅\n\n');
+            end
+
+            function loadCalibration(obj, filename)
+                % loadCalibration(filename)
+                % Loads saved calibration file and prints calibration type (Chrimson/ChR2/Both)
+                
+                if nargin < 2
+                    [file, path] = uigetfile('*.mat', 'Select calibration file to load:');
+                    if isequal(file, 0)
+                        fprintf('Calibration load cancelled.\n');
+                        return;
+                    end
+                    filename = fullfile(path, file);
+                end
+            
+                loaded = load(filename);
+                assert(isfield(loaded, 'Params') && isfield(loaded, 'Results'), ...
+                    'File must contain both "Params" and "Results" variables.');
+            
+                obj.Params = loaded.Params;
+                obj.Results = loaded.Results;
+            
+                fprintf('✅ Calibration loaded from: %s\n', filename);
+                fprintf('  Number of target powers: %d\n', numel(obj.Params.targetPowers));
+            
+                if isfield(obj.Params, 'wavelengths')
+                    fprintf('  Wavelengths: [%s] nm\n', strjoin(string(obj.Params.wavelengths), ', '));
+                end
+            
+                % --- Determine what was calibrated ---
+                result = obj.Results;
+                lasers = {'Chrimson', 'ChR2'};
+                active = false(1, 2);
+
+                for i = 1:2
+                    if isfield(result, 'aoutValues') && size(result.aoutValues,2) >= i
+                        col = result.aoutValues(:,i);
+                        active(i) = any(col > 0 & ~isnan(col));
+                    end
+                end
+            
+                %first, get the original aout values
+                
+
+                if any(active)
+                    if all(active)
+                        fprintf('  Calibration type: Chrimson + ChR2 (both)\n')
+                    elseif active(1)
+                        fprintf('  Calibration type: Chrimson only\n');
+                    elseif active(2)
+                        fprintf('  Calibration type: ChR2 only\n');
+                    end
+                else
+                    fprintf('⚠️  Calibration file contains no valid AOUT values.\n');
+                    fprintf('calibration was not updated\n')
+                    return
+                end
+
+               oc_paramnames = obj.LaserInterface.Arduino.ParamNames;
+               chrimson_aout_idxs = 
+               chrimson_
+               chr2_aout_idxs = contains(oc_paramnames, 'CHR2_AOUT');
+               chr2_aout_names = oc_paramnames(chr2_aout_idxs);
+
+               strs = ["CHRIMSON_AOUT","CHR2_AOUT"];
+               for i = 1:length(strs)
+                   if active(i)
+                       aoutidxs = contains(oc_paramnames, strs(i));
+                       aoutnames = oc_paramnames(aoutidxs);
+                       calvals = result.aoutValues(:,i);
+                       nvals = length(calvals);
+                       if nvals == sum(aoutidxs)
+                           for j = 1:nvals
+                               paramId = aoutnames(j);
+                               value = calvals(j);
+                               obj.SetParam(paramId, value)
+
+                           end
+                       end
+                   end
+               end
+
+
+            end
+
+
+            function mergeCalibration(obj, fileChrimson, fileChR2)
+                % mergeCalibration(fileChrimson, fileChR2)
+                % Merges separate Chrimson and ChR2 calibration files into obj.Params and obj.Results
+            
+                % --- Load Files ---
+                assert(isfile(fileChrimson) && isfile(fileChR2), 'Both input files must exist.');
+                chr = load(fileChrimson);
+                chr2 = load(fileChR2);
+            
+                assert(isfield(chr, 'Params') && isfield(chr, 'Results'), 'Chrimson file missing Params or Results.');
+                assert(isfield(chr2, 'Params') && isfield(chr2, 'Results'), 'ChR2 file missing Params or Results.');
+            
+                % --- Validate Data ---
+                chrValid = any(chr.Results.aoutValues(:,1) > 0 & ~isnan(chr.Results.aoutValues(:,1)));
+                chr2Valid = any(chr2.Results.aoutValues(:,2) > 0 & ~isnan(chr2.Results.aoutValues(:,2)));
+            
+                assert(chrValid && ~any(chr.Results.aoutValues(:,2) > 0), ...
+                    'Chrimson file must only contain values in column 1.');
+                assert(chr2Valid && ~any(chr2.Results.aoutValues(:,1) > 0), ...
+                    'ChR2 file must only contain values in column 2.');
+            
+                % --- Chrimson Subset ---
+                chrP = chr.Params.targetPowers;
+                chrAOUT = chr.Results.aoutValues(:,1);
+                chrPower = chr.Results.powers(:,1);
+            
+                % --- ChR2 Subset ---
+                chr2P = chr2.Params.targetPowers;
+                chr2AOUT = chr2.Results.aoutValues(:,2);
+                chr2Power = chr2.Results.powers(:,2);
+            
+                % --- Determine max length for merged arrays ---
+                maxN = max(length(chrP), length(chr2P));
+                aoutValues = NaN(maxN, 2);
+                powers = NaN(maxN, 2);
+            
+                % --- Insert Chrimson values ---
+                aoutValues(1:length(chrP), 1) = chrAOUT;
+                powers(1:length(chrP), 1) = chrPower;
+            
+                % --- Insert ChR2 values ---
+                aoutValues(1:length(chr2P), 2) = chr2AOUT;
+                powers(1:length(chr2P), 2) = chr2Power;
+            
+                % --- Assign to object ---
+                obj.Params.wavelengths = [555, 465];  % Chrimson = laser 1, ChR2 = laser 2
+                obj.Params.targetPowers_Chrimson = chrP;
+                obj.Params.targetPowers_ChR2 = chr2P;
+                obj.Results.aoutValues = aoutValues;
+                obj.Results.powers = powers;
+            
+                % Optional: assign union for backward compatibility
+                obj.Params.targetPowers = unique([chrP(:); chr2P(:)], 'stable');
+            
+                fprintf('✅ Merged calibration loaded:\n');
+                fprintf('  Chrimson: %s (%d powers)\n', fileChrimson, numel(chrP));
+                fprintf('  ChR2:     %s (%d powers)\n', fileChR2, numel(chr2P));
+            end
+            
+            
+
+          
+        end
+end

@@ -12,7 +12,7 @@
 %   11-2-17: updated histogram tab to allow UI of numBins (ahamilos)
 % 
 % 
-
+% note 08/21/25: aout value of 1005 yields 30.0uW
 classdef MouseBehaviorInterface < handle
 	properties
 		Arduino

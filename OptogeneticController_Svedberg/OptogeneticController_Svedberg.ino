@@ -929,17 +929,26 @@ void dan_tag_state() {
     if (_params[_DEBUG]) sendMessage("Performing opto tagging dan params Experiment.");
   }
 
-
   if (pulseIndex < _params[CHRIMSON_CHR2_NUM_PULSES]) {
     runChR2ChrimsonPulses();
-  } else if (!delayAfterPhase) {
-    delayStartTime = millis();
-    delayAfterPhase = true;
-    if (_params[_DEBUG]) sendMessage("Phase 1 complete. Delay before Phase 2.");
-  } else if ((unsigned long)(millis() - delayStartTime) >= _params[STIM_TRAIN_DELAY]) {
-    phase++;
-    pulseIndex = 0;
-    delayAfterPhase = false;
+  }
+  // } else if (!delayAfterPhase) {
+  //   delayStartTime = millis();
+  //   delayAfterPhase = true;
+  //   if (_params[_DEBUG]) sendMessage("Phase 1 complete. Delay before Phase 2.");
+  // }
+  // } else if ((unsigned long)(millis() - delayStartTime) >= _params[STIM_TRAIN_DELAY]) {
+  //   phase++;
+  //   pulseIndex = 0;
+  //   delayAfterPhase = false;
+  // }
+  else {
+    sendMessage("R");
+    if (_params[_DEBUG]) sendMessage("Optotagging complete.");
+    _state = WAIT_REQUEST_STATE;
+    _resultCode = CODE_OPTOTAG;
+    sendMessage("`" + String(_resultCode)); 
+    if(_params[_DEBUG]) sendMessage("Moving to WAIT_REQUEST_STATE");
   }
 
 }
@@ -1162,7 +1171,12 @@ void runChrimsonPulse() {
 
 // === Function: runChR2ChrimsonPulses ===
 void runChR2ChrimsonPulses() {
-
+  if (checkQuit()) {
+    setChrimsonLED(false);
+    setChR2LED(false);
+    return;
+  }
+  
   if (chrimsonidx >= 6) chrimsonidx = 0; // Reset Chrimson index if it exceeds the number of aouts
   if (chr2idx >= 6) chr2idx = 0; // Reset ChR2 index if it exceeds the number of aouts
 
@@ -1196,7 +1210,7 @@ void runChR2ChrimsonPulses() {
 
   // === Train complete ===
   if (pulseIndex >= _params[CHRIMSON_CHR2_NUM_PULSES]) {
-    pulseIndex = 0;
+    // pulseIndex = 0;
     currentAout = constrain(currentTrain, 0, 4);
     if (_params[_DEBUG]) {
       sendMessage("Completed Chrimson ChR2 pulses");

@@ -213,9 +213,27 @@ classdef OptogeneticsController < handle
 				'Style', 'pushbutton',...
 				'Position', ctrlPos,...
 				'String', 'Optotag',...
-				'TooltipString', 'Run Optotagging Ladder.',...
+				'TooltipString', 'Run Optotagging Ladder.',...s
 				'Callback', {@OptogeneticsController.Optotag, obj.Arduino}...
 			);
+
+            % DanTag
+            ctrlPosBase = button_Optotag.Position;
+			ctrlPos = [...
+				ctrlPosBase(1),...
+				ctrlPosBase(2) - buttonHeight - ctrlSpacing,...
+				buttonWidth,...	
+				buttonHeight...
+			];
+			button_DanTag = uicontrol(...
+				'Parent', dlg,...
+				'Style', 'pushbutton',...
+				'Position', ctrlPos,...
+				'String', 'DanTag',...
+				'TooltipString', 'Run Optotagging Ladder.',...
+				'Callback', {@OptogeneticsController.DanTag, obj.Arduino}...
+			);
+
 %% --------------------------------------------------------------------------------------------
 
 
@@ -1649,7 +1667,120 @@ classdef OptogeneticsController < handle
 		function Optotag(~, ~, arduino)
 			arduino.Optotag()
 			fprintf('Called Optotagging ladder...\n')
-		end
+        end
+        function DanTag(~, ~, arduino)
+			arduino.DanTag()
+			fprintf('Called Dan Tagging...\n')
+        end
+        function loadCalibration(obj, filename)
+        % loadCalibration(filename)
+        % Loads saved calibration file and prints calibration type (Chrimson/ChR2/Both)
+        
+            if nargin < 2
+                [file, path] = uigetfile('*.mat', 'Select calibration file to load:');
+                if isequal(file, 0)
+                    fprintf('Calibration load cancelled.\n');
+                    return;
+                end
+                filename = fullfile(path, file);
+            end
+        
+            loaded = load(filename);
+            assert(isfield(loaded, 'Params') && isfield(loaded, 'Results'), ...
+                'File must contain both "Params" and "Results" variables.');
+        
+            obj.Params = loaded.Params;
+            obj.Results = loaded.Results;
+        
+            fprintf('✅ Calibration loaded from: %s\n', filename);
+            fprintf('  Number of target powers: %d\n', numel(obj.Params.targetPowers));
+        
+            if isfield(obj.Params, 'wavelengths')
+                fprintf('  Wavelengths: [%s] nm\n', strjoin(string(obj.Params.wavelengths), ', '));
+            end
+        
+            % --- Determine what was calibrated ---
+            result = obj.Results;
+            lasers = {'Chrimson', 'ChR2'};
+            active = false(1, 2);
+            for i = 1:2
+                if isfield(result, 'aoutValues') && size(result.aoutValues,2) >= i
+                    col = result.aoutValues(:,i);
+                    active(i) = any(col > 0 & ~isnan(col));
+                end
+            end
+        
+            if all(active)
+                fprintf('  Calibration type: Chrimson + ChR2 (both)\n');
+            elseif active(1)
+                fprintf('  Calibration type: Chrimson only\n');
+            elseif active(2)
+                fprintf('  Calibration type: ChR2 only\n');
+            else
+                fprintf('⚠️  Calibration file contains no valid AOUT values.\n');
+            end
+        end
+
+        function mergeCalibration(obj, fileChrimson, fileChR2)
+            % mergeCalibration(fileChrimson, fileChR2)
+            % Merges separate Chrimson and ChR2 calibration files into obj.Params and obj.Results
+        
+            % --- Load Files ---
+            assert(isfile(fileChrimson) && isfile(fileChR2), 'Both input files must exist.');
+            chr = load(fileChrimson);
+            chr2 = load(fileChR2);
+        
+            assert(isfield(chr, 'Params') && isfield(chr, 'Results'), 'Chrimson file missing Params or Results.');
+            assert(isfield(chr2, 'Params') && isfield(chr2, 'Results'), 'ChR2 file missing Params or Results.');
+        
+            % --- Validate Data ---
+            chrValid = any(chr.Results.aoutValues(:,1) > 0 & ~isnan(chr.Results.aoutValues(:,1)));
+            chr2Valid = any(chr2.Results.aoutValues(:,2) > 0 & ~isnan(chr2.Results.aoutValues(:,2)));
+        
+            assert(chrValid && ~any(chr.Results.aoutValues(:,2) > 0), ...
+                'Chrimson file must only contain values in column 1.');
+            assert(chr2Valid && ~any(chr2.Results.aoutValues(:,1) > 0), ...
+                'ChR2 file must only contain values in column 2.');
+        
+            % --- Chrimson Subset ---
+            chrP = chr.Params.targetPowers;
+            chrAOUT = chr.Results.aoutValues(:,1);
+            chrPower = chr.Results.powers(:,1);
+        
+            % --- ChR2 Subset ---
+            chr2P = chr2.Params.targetPowers;
+            chr2AOUT = chr2.Results.aoutValues(:,2);
+            chr2Power = chr2.Results.powers(:,2);
+        
+            % --- Determine max length for merged arrays ---
+            maxN = max(length(chrP), length(chr2P));
+            aoutValues = NaN(maxN, 2);
+            powers = NaN(maxN, 2);
+        
+            % --- Insert Chrimson values ---
+            aoutValues(1:length(chrP), 1) = chrAOUT;
+            powers(1:length(chrP), 1) = chrPower;
+        
+            % --- Insert ChR2 values ---
+            aoutValues(1:length(chr2P), 2) = chr2AOUT;
+            powers(1:length(chr2P), 2) = chr2Power;
+        
+            % --- Assign to object ---
+            obj.Params.wavelengths = [555, 465];  % Chrimson = laser 1, ChR2 = laser 2
+            obj.Params.targetPowers_Chrimson = chrP;
+            obj.Params.targetPowers_ChR2 = chr2P;
+            obj.Results.aoutValues = aoutValues;
+            obj.Results.powers = powers;
+        
+            % Optional: assign union for backward compatibility
+            obj.Params.targetPowers = unique([chrP(:); chr2P(:)], 'stable');
+        
+            fprintf('✅ Merged calibration loaded:\n');
+            fprintf('  Chrimson: %s (%d powers)\n', fileChrimson, numel(chrP));
+            fprintf('  ChR2:     %s (%d powers)\n', fileChR2, numel(chr2P));
+        end
+            
+            
 		function ArduinoClose(~, ~, obj)
 			selection = questdlg(...
 				'Close all windows and terminate connection with Arduino?',...
@@ -1964,6 +2095,6 @@ classdef OptogeneticsController < handle
 				tLong.EdgeColor = 'k';
 				uistack(tLong, 'top') % Bring to top
 			end
-		end
-	end
+        end
+    end     
 end
