@@ -8,7 +8,7 @@
 
 	Created       9/16/16 - ahamilos
 	Last Modified 8/8/24 - ahamilos	"RIG1 LATE AH AUG 8 2024 1750h"
-	** Same as Hyb_CHRIMSON_hazard.ino, but updated for Teensy3.6 */
+	** Same as Hyb_Stim_hazard.ino, but updated for Teensy3.6 */
  
  	static String versionCode        = "RIG1 LATE AH AUG 1 2024 1750h";
 	
@@ -28,7 +28,7 @@
 	8/21/19 ---- version code 'AUG 21 2019 13h' ---------- have edited but not tested yet!!!!!!!!!!!!
 	--> Fixing so that we can cancel stim at EOT
 		--> changed shock pin to 13
-		--> added CHRIMSON cancel pin @ 1 --- this pin now handles all cancellation cases, such as f_lick, end of trial, and rewarded trial
+		--> added Stim cancel pin @ 1 --- this pin now handles all cancellation cases, such as f_lick, end of trial, and rewarded trial
 		--> changed flick pin to 12
 	--> Added new cancellation params so that we can cancel in many ways:
 		--> STIM_CANCEL_FLICK --> If we want to send cancel signal on first lick post cue
@@ -48,7 +48,7 @@
 			--> set time to when you'd like this to happen -- Note, no effect on Lights Out stim I don't think
 	--> Revised to allow baseline stimulation - To use it, set the stim time to > total trial duration (i.e., 17001) and the opto controller to > randdelay+total trial time.
 	 		*** MAKE SURE TO t-OUT the LIGHTS ON event to the Stimulation Cancel port on Arduino controller!
-	Notes: Allow for optostim call from LampOff event using special stim mode -------- any Neither negative or Nan works... so a stim time greater than the total trial time will do it CHRIMSON_STIM_TIME will do this
+	Notes: Allow for optostim call from LampOff event using special stim mode -------- any Neither negative or Nan works... so a stim time greater than the total trial time will do it Stim_STIM_TIME will do this
 		Got rid of signed long params and kept all as int
 		also made getArguments(String message, signed long *_arguments) --> int again (revised the change made on 8/20)
 		and changed from int in initialization: static signed long _arguments[2] = {0}; --> int again (revised the change made on 8/20)
@@ -61,14 +61,14 @@
 
 
 	Update Hx:
-	(prior version: Pav-Op-Hyb_CHRIMSON_hazard)
+	(prior version: Pav-Op-Hyb_Stim_hazard)
 	--> Added capacity to stimulate at non-zero times with probability-UI controlled
 			If stim time is not 0, then there's a dice throw if you make it to the time specified before lick (good)
 	--> Added capacity for accelerometer-based lick ckt (ready to test)
 	--> Stop stim when lick (good)
 	-- I will write a line to track just the first lick on a digital line and send this to the optocontroller
-	(prior version: Pav-Op-FIBER_camera_CHRIMSON)
-	--> Added pin to trigger CHRIMSON stimulation and stim parameters (time of onset in trial)
+	(prior version: Pav-Op-FIBER_camera_Stim)
+	--> Added pin to trigger Stim stimulation and stim parameters (time of onset in trial)
 	--> fixed position of first_lick_received = false;                 // Reset tracker of first licks to prewindow
 	--> Added a IR houselamp on pin 0 
 	--> Added a falling edge for IR LED
@@ -165,8 +165,8 @@
 		22: ABORT_MIN           Minimum time after cue before early lick aborts trial (ms)
 		23: ABORT_MAX           Maximum time after cue when abort available (ms)
 		24: P_PAVLOVIAN   Percent of mixed trials that should be pavlovian (decimal)
-		25: P_STIM_UNCONDITIONAL % of trials (0-1) to stimulate with CHRIMSON
-		26: CHRIMSON_STIM_TIME      0 ms for at cue, -time for lights-off, in ms wrt cue
+		25: P_STIM_UNCONDITIONAL % of trials (0-1) to stimulate with Stim
+		26: Stim_STIM_TIME      0 ms for at cue, -time for lights-off, in ms wrt cue
 
 	---------------------------------------------------------------------
 		Incoming Message Syntax: (received from Matlab HOST)
@@ -218,25 +218,28 @@ Available pins for 3.4: 4-11 20-23
 *****************************************************/
 
 // Digital OUT
-#define PIN_HOUSE_LAMP          23// others 6// ephys room 0   // House Lamp Pin         6 (DUE = 34)  (MEGA = 34)  (UNO = 5?)  (TEENSY = 6)	(TEENSY3.4 6)
-#define PIN_LED_CUE             22//others 4// ephys room 7   // Cue LED Pin            4 (DUE = 35)  (MEGA = 28)  (UNO =  4)  (TEENSY = 4)	(TEENSY3.4 4)
-#define PIN_REWARD              24//other rooms 7 // ephys room 2   // Reward Pin             7 (DUE = 37)  (MEGA = 52)  (UNO =  7)  (TEENSY = 7)	(TEENSY3.4 7)
-#define PIN_REWARD_ECHO         12 // reward echo?
+
+#define PIN_FIRST_LICK	        50 // other rooms 12// ephys room 9  // Sends receipt of first lick -- used to halt stimulation 	 12 (TEENSY = 12)	(TEENSY3.4 ?)							 1 (TEENSY = 1)	(TEENSY3.4 21)
+#define PIN_CANCEL_STIM	        26 // other rooms 1// ephys room 10   // Halt stimulation 	  
+#define PIN_CHRIM_STIM         	24 // other rooms 10// ephys room 8  // Trigger 2nd Arduino for Stim stim 						 10 (TEENSY = 10) (TEENSY3.4 10)
+#define PIN_CHR2_STIM			25		//					 1 (TEENSY = 1)	(TEENSY3.4 21)
+#define PIN_HOUSE_LAMP          23 // others 6// ephys room 0   // House Lamp Pin         6 (DUE = 34)  (MEGA = 34)  (UNO = 5?)  (TEENSY = 6)	(TEENSY3.4 6)
+#define PIN_LED_CUE             22 //others 4// ephys room 7   // Cue LED Pin            4 (DUE = 35)  (MEGA = 28)  (UNO =  4)  (TEENSY = 4)	(TEENSY3.4 4)
+#define PIN_LICK_ECHO	        21 // ephys room NC   // lick echo 
+#define PIN_REWARD              20 //other rooms 7 // ephys room 2   // Reward Pin             7 (DUE = 37)  (MEGA = 52)  (UNO =  7)  (TEENSY = 7)	(TEENSY3.4 7)
 #define PIN_IR_LED_TRIGGER       9 // other rooms 9// ephys room 3   // IR LED Trigger Pin 										 9 (TEENSY = 9)	(TEENSY3.4 9)
-#define PIN_3_3                  6// other rooms 11// ephys room 16  // 3.3V src 													 11 (TEENSY = 11) (TEENSY3.4 11)
-#define PIN_IR_HOUSE	           0 // other rooms 0// ephys room 15   // IR Houselamp for camera 									 0 (TEENSY = 0)	(TEENSY3.4 20)
-#define PIN_LICK_ECHO	          21 // ephys room NC   // lick echo 
-#define PIN_CHRIMSON            25 // other rooms 10// ephys room 8  // Trigger 2nd Arduino for CHRIMSON stim 						 10 (TEENSY = 10) (TEENSY3.4 10)
-#define PIN_FIRST_LICK	        50 // other rooms 12// ephys room 9  // Sends receipt of first lick -- used to halt stimulation 	 12 (TEENSY = 12)	(TEENSY3.4 ?)
-#define PIN_CANCEL_CHRIMSON	    12 // other rooms 1// ephys room 10   // Halt stimulation 	  										 1 (TEENSY = 1)	(TEENSY3.4 21)
+#define PIN_3_3                  6 // other rooms 11// ephys room 16  // 3.3V src 													 11 (TEENSY = 11) (TEENSY3.4 11)
+#define PIN_IR_HOUSE	         0 // other rooms 0// ephys room 15   // IR Houselamp for camera 									 0 (TEENSY = 0)	(TEENSY3.4 20)
+
 
 // PWM OUT --- n.b! 2 tones can't play at the same time!
-#define PIN_SPEAKER        4//others 5// ephys room 6   	// 5Speaker Pin           5 (DUE =  2)  (MEGA =  8)  (UNO =  9) (TEENSY = 5)	(TEENSY3.4 5)
+#define PIN_SPEAKER        		4//others 5// ephys room 6   	// 5Speaker Pin           5 (DUE =  2)  (MEGA =  8)  (UNO =  9) (TEENSY = 5)	(TEENSY3.4 5)
 
 // Digital IN
-#define PIN_CAMO           31//others 16 // ephys room 4
-#define PIN_LICK           5//others 2// ephys room 5    // 6Lick Pin              2 (DUE = 36)  (MEGA =  2)  (UNO =  2)  (TEENSY = 2)	(TEENSY3.4 22)
-#define PIN_RECEIPT        56//others 8// ephys room 1  	// Confirms Optogenetics Command Received 					 8  (TEENSY = 8)	(TEENSY3.4 8)
+#define PIN_CHRIM_RECEIPT       7//others 8// ephys room 1  	// Confirms Optogenetics Command Received 					 8  (TEENSY = 8)	(TEENSY3.4 8)
+#define PIN_CHR2_RECEIPT		12	//						 8  (TEENSY = 8)	(TEENSY3.4 8)
+#define PIN_CAMO           		31//others 16 // ephys room 4
+#define PIN_LICK           		5//others 2// ephys room 5    // 6Lick Pin              2 (DUE = 36)  (MEGA =  2)  (UNO =  2)  (TEENSY = 2)	(TEENSY3.4 22)
 
 //Analog Output Stuff
 #define ANALOG_WRITE_RESOLUTION             12      // 12bits: 0-4095
@@ -307,8 +310,10 @@ enum EventMarkers
 	EVENT_OPERANT,          // Marks trial as Operant
 	EVENT_HYBRID,           // Marks trial as Hybrid
   	EVENT_FIRST_LICK,       // Marks first relevant lick in trial (abort, reward, or late)
-  	EVENT_CHRIMSON_STIM_REQ,	// Marks time of stim command to Optogenetics Arduino
-  	EVENT_CHRIMSON_STIM_END,	// Marks receipt of stim command from Optogenetics Arduino
+	EVENT_CHRIM_STIM_REQ,	// Marks time of stim command to Optogenetics Arduino
+	EVENT_CHRIM_STIM_END,	// Marks receipt of stim command from Optogenetics Arduino
+  	EVENT_CHR2_STIM_REQ,	// Marks time of stim command to Optogenetics Arduino
+  	EVENT_CHR2_STIM_END,	// Marks receipt of stim command from Optogenetics Arduino
   	EVENT_JUICE_HIGH,		// Marks a high juice dispensal, 2x the normal duration
   	EVENT_JUICE_LOW,		// Marks a low dispensal, 0.5x the normal
   	EVENT_LATE_WINDOW,		// Marks entry to the late window
@@ -335,8 +340,10 @@ static const char *_eventMarkerNames[] =    // * to define array of strings
 	"OPERANT",
 	"HYBRID",
   	"FIRST_LICK",
-  	"CHRIMSON_STIM_REQ",
-  	"CHRIMSON_STIM_END",
+	"CHRIM_STIM_REQ",
+	"CHRIM_STIM_END",
+  	"CHR2_STIM_REQ",
+  	"CHR2_STIM_END",
   	"JUICE_HIGH",
   	"JUICE_LOW",
   	"EVENT_LATE_WINDOW",
@@ -379,8 +386,8 @@ enum SoundEventFrequencyEnum
 	TONE_ABORT   = 440,              // Error tone: (prev C3 = 131)
 	TONE_LATE	 = 132,				         // late tone -- QD
 	TONE_CUE     = 3300,             // 'Start counting the interval' cue: (prev C6 = 1047)
-  TONE_NO_LICK   = 131,              // no lick sound
-  TONE_TRIGGER = 12345             // A brief pulse of this frequency marks when Arduino starts to match Arduino start time
+	TONE_NO_LICK   = 131,              // no lick sound
+	TONE_TRIGGER = 12345             // A brief pulse of this frequency marks when Arduino starts to match Arduino start time
 
 };
 
@@ -408,16 +415,8 @@ enum ParamID
 	ABORT_MIN,                      // Miminum time post cue before lick causes abort (ms)
 	ABORT_MAX,                      // Maximum time post cue before abort unavailable (ms)
 	P_PAVLOVIAN,                   // Percent of Trials to be pavlovian
-  P_STIM_UNCONDITIONAL,			// Percent of trials to stimulate CHRIMSON (0-100)
-	CHRIMSON_STIM_TIME,					// Time to begin stimulation
-	P_STIM_I_NOLICK,				// Probability of stim conditioned on having reached a longer time
-	STIM_CANCEL_ON_REW,				// 1 if you want stimulation to be ignored on a rewarded trial
-	STIM_CANCEL_EOT,				// Cancels stim request at the end of a trial
-	STIM_CANCEL_FLICK,				// Cancels stim on first lick post-cue
-	STIM_CANCEL_LICK_WIN_STIM,		// Cancels on the first lick within the stimulation
-	P_STIM_ON_FLICK,				// Probability of a stimulation occurring triggered by f-lick (default 0)
-	IF_FLICKSTIM_EARLY1_REW2_ALL0,	// Decide if we will only stim on rewarded or early trials...
-	P_JUICE_HI_OR_LOW,				// probability of giving a higher or lower juice amount on a rewarded trial
+	NO_LICK_BEFORE_STIM,            // how long to wait detecting no licks before doing a stim -NH
+	STIM_ITI,						// how long after stim to wait before going to ITI -NH
 	PHOTOMETRY,					  // 1 to enable photometry stimulation
 	PHOTOMETRY_AOUT,				// Photometry LED power (0-255)
 	_NUM_PARAMS                     // (Private) Used to count how many parameters there are so we can initialize the param array with the correct size. Insert additional parameters before this.
@@ -445,18 +444,10 @@ static const char *_paramNames[] =
 	"ABORT_MIN",
 	"ABORT_MAX",
 	"P_PAVLOVIAN",
-	"P_STIM_UNCONDITIONAL",
-	"CHRIMSON_STIM_TIME",
-	"P_STIM_I_NOLICK",
-	"STIM_CANCEL_ON_REW",
-	"STIM_CANCEL_EOT",
-	"STIM_CANCEL_FLICK",
-	"STIM_CANCEL_LICK_WIN_STIM",
-	"P_STIM_ON_FLICK",
-	"IF_FLICKSTIM_EARLY1_REW2_ALL0",	// Decide if we will only stim on rewarded or early trials...
-	"P_JUICE_HI_OR_LOW",
+	"NO_LICK_BEFORE_STIM",
+	"STIM_ITI",
 	"PHOTOMETRY",
-	"PHOTOMETRY_AOUT",
+	"PHOTOMETRY_AOUT"
 }; //**** BE SURE TO INIT NEW PARAM VALUES BELOW!*****//
 
 // Initialize parameters
@@ -480,16 +471,8 @@ int _params[_NUM_PARAMS] =
 	0,                            	// ABORT_MIN ** use 500 for beginner task
 	3333,                           // ABORT_MAX
 	0,                              // P_PAVLOVIAN
-	0,                              // P_STIM_UNCONDITIONAL
-	0,								              // CHRIMSON_STIM_TIME -- set to 17001 and connect cue to cancel pin if you want to stim LOI
-	0,								              // P_STIM_I_NOLICK
-	0,								              // STIM_CANCEL_ON_REW -- for protocol A
-	0,								              // STIM_CANCEL_EOT -- for protocol A
-	0,								              // STIM_CANCEL_FLICK -- for protocol A
-	0,								              // STIM_CANCEL_LICK_WIN_STIM
-	0,								              // P_STIM_ON_FLICK
-	0,								              // IF_FLICKSTIM_EARLY1_REW2_ALL0
-	0, 								              // P_JUICE_HI_OR_LOW
+	0,								// NO_LICK_BEFORE_STIM -NH
+	0,								// STIM_ITI
 	0,								// PHOTOMETRY
 	0								// PHOTOMETRY_AOUT
 };
@@ -525,12 +508,18 @@ static long _dice_roll               = 0;        // Randomly select if trial wil
 static bool _mixed_is_pavlovian      = true;     // Track if current mixed trial is pavlovian
 static bool _first_lick_received     = false;    // Track if first lick received for a trial
 static bool _f_stimwindow_lick_received  = true; // Track if first lick received after stim has begun -- inits in true state because it gets reset on stimulation request
-static bool _CHRIMSON_trigger_on         = false;    // Track if CHRIMSON trigger is on 
 static bool _trial_is_stimulated     = false;    // Track if trial is stimulated  
-static bool _stimulation_requested   = false;	 // Track if stim requested
-static bool	_CHRIMSON_receipt_received   = false;	 // Clear receipt
-static bool	_need2check_non_zero_CHRIMSON   = false; // Track if user wants to stimulate at a time other than zero
-static bool _CHRIMSON_cancelled 		 = false;    // Track if CHRIMSON request has been cancelled
+static bool _chrim_stimulation_requested = false; // Track if Chrim stim requested
+static bool _chr2_stimulation_requested   = false; // Track if Chr2 stim requested
+static bool _chrim_stim_trigger_on       = false; // Track if Chrim Stim trigger is on
+static bool _chr2_stim_trigger_on        = false; // Track if Chr2 Stim trigger is on
+static bool	_chrim_stim_receipt_received   = false; // Clear receipt
+static bool	_chr2_stim_receipt_received    = false; // Clear receipt
+static bool _stim_cancelled        	= false; // Track if Chrim Stim request has been cancelled
+static bool	_need2check_non_zero_Stim   = false; // Track if user wants to stimulate at a time other than zero
+static bool _chrim_last 			= false; // Track last state of Chrim receipt
+
+static unsigned long _lastLickTime = 0; //Tracks how long it's been since the last lick important for when to do stim -NH
 static unsigned int _reward_duration_this_trial = 35; // Sets the reward duration of the current trial and hangs onto it
 
 int _photometry_aout = 0; // Track the photometry aout value
@@ -550,13 +539,14 @@ void setup()
 	// pinMode(PIN_IR_HOUSE, OUTPUT);				// An IR Houselamp - always on
 	pinMode(PIN_LICK_ECHO, OUTPUT);				// Lick echo
 	// Adding reward echo here - NH
-	pinMode(PIN_REWARD_ECHO, OUTPUT);
-	pinMode(PIN_CHRIMSON, OUTPUT);				    // Trigger for CHRIMSON Program
+	pinMode(PIN_CHRIM_STIM, OUTPUT);				    // Trigger for Stim Program
+	pinMode(PIN_CHR2_STIM, OUTPUT);				    // Trigger for Stim Program
 	pinMode(PIN_FIRST_LICK, OUTPUT);			// Send first lick pulse to optocontroller
-	pinMode(PIN_CANCEL_CHRIMSON, OUTPUT);			// Cancel CHRIMSON request
+	pinMode(PIN_CANCEL_STIM, OUTPUT);			// Send cancel stim pulse to optocontroller
 	// INPUTS
 	pinMode(PIN_LICK, INPUT);                   // Lick detector
-	pinMode(PIN_RECEIPT, INPUT);				// Confirms Optogenetics Controller received command, used for event marker
+	pinMode(PIN_CHRIM_RECEIPT, INPUT);				// Confirms Optogenetics Controller received command, used for event marker
+	pinMode(PIN_CHR2_RECEIPT, INPUT);				// Confirms Optogenetics Command Received
 	pinMode(PIN_CAMO, INPUT);					// Simply relays CamO to CED
 	analogWriteResolution(ANALOG_WRITE_RESOLUTION);           // Allows analogwrite??
 	pinMode(PIN_PHOTOMETRY_PWR, OUTPUT);		// Photometry LED power control
@@ -655,9 +645,6 @@ void loop()
 				intertrial();
 				break;
 
-			case OPTOTAGGING:
-				optotagging();
-				break;
 		} // End switch statement--------------------------
 	}
 } // End main loop-------------------------------------------------------------------------------------------------------------
@@ -672,11 +659,12 @@ void mySetup()
 	setCueLED(false);                            // Cue LED OFF
 	setTriggerLED(true);						 // Trigger LED begins in ON config - camera detects falling edge
 	digitalWrite(PIN_3_3, HIGH);				 // IR Trigger Reset
-	// digitalWrite(PIN_IR_HOUSE, HIGH);			 // Houselamp Always On
 	digitalWrite(PIN_FIRST_LICK, LOW);			 // Initialize first lick tracker to low
-	setCHRIMSONTrigger(false);					     // Turn off CHRIMSON trigger
-	cancelCHRIMSON(false);							 // Reset Cancellation Trigger
 	setPhotometryLED(false);					 // Turn off Photometry LED
+	pinMode(PIN_CHRIM_STIM, OUTPUT);				    // Trigger for Stim Program
+  	pinMode(PIN_CHR2_STIM, OUTPUT);				    // Trigger for Stim Program
+  	pinMode(PIN_FIRST_LICK, OUTPUT);			// Send first lick pulse to optocontroller
+  	pinMode(PIN_CANCEL_STIM, OUTPUT);			// Cancel Stim request
 
 
 	//---------------------------Reset a bunch of variables---------------------------//
@@ -707,10 +695,10 @@ void mySetup()
 	_mixed_is_pavlovian     	= true;     // Track if current mixed trial is pavlovian
   	_first_lick_received        = false;    // Reset first lick detector
   	_trial_is_stimulated        = false;    // Track if trial is stimulated 
-	_stimulation_requested      = false;    // Track if stim command issued
-	_CHRIMSON_receipt_received      = false;	// Clear receipt
-	_need2check_non_zero_CHRIMSON   = false;	// Track if user wants to stimulate at a time other than zero
-	_f_stimwindow_lick_received = true;		// Track if first lick within stimulated window has been received -- inits as true because when stim req, it resets
+	_chrim_stimulation_requested   = false; // Track if stim command issued
+	_chr2_stimulation_requested    = false; // Track if stim command issued
+	_chrim_stim_receipt_received = false; // Clear receipt
+	_chr2_stim_receipt_received  = false; // Clear receipt
 	_reward_duration_this_trial = 35;		// Set reward duration on this trial
 
 	// Tell PC that we're running by sending '~' message:
@@ -748,9 +736,10 @@ void idle_state() {
 		noTone(PIN_SPEAKER);                             // Kill tone
 		setReward(false);                                // Kill reward
 		setTriggerLED(true);							 // Reset Trigger IR LED
-		setCHRIMSONTrigger(false);							 // Kill CHRIMSON trigger
+		setChrimStimTrigger(false);							 // Kill Stim trigger
+		setChR2StimTrigger(false);							 // Kill Stim trigger
 		digitalWrite(PIN_FIRST_LICK, LOW);				 // Kill first lick pin
-		cancelCHRIMSON(false);								 // Reset cancellation trigger
+		cancelStim(false);							 // Reset Stim cancellation pin and tracker
 		setPhotometryLED(false);					 // Turn off Photometry LED
 		
     // Reset state variables
@@ -761,11 +750,15 @@ void idle_state() {
 		_resultCode = -1;                            	 // Clear previously registered result code
     	_first_lick_received = false;                	 // Clear previously registered first lick
     	_trial_is_stimulated = false;				  	 // Reset trial stimulation
-    	_stimulation_requested = false;				 	 // Clear stim requested
-    	_CHRIMSON_receipt_received = false;				 	 // Clear receipt
-    	_need2check_non_zero_CHRIMSON = false;				 // Clear checked non-zero stim
+    	_chrim_stimulation_requested = false;				 	 // Clear stim requested
+    	_chrim_stim_receipt_received = false;				 	 // Clear receipt
+		_chr2_stimulation_requested = false;				 	 // Clear stim requested
+		_chr2_stim_receipt_received = false;				 	 // Clear receipt
+    	_need2check_non_zero_Stim = false;				 // Clear checked non-zero stim
     	_f_stimwindow_lick_received = true;			 	 // Track if first lick within stimulated window has been received (init as true because is set false on stim request)
-    	
+    	_chrim_last = false;							 // Track last state of Chrim receipt
+
+		checkLick();							 // Update _lick_state
 
 		//------------------------DEBUG MODE--------------------------//
 		if (_params[_DEBUG]) {
@@ -817,7 +810,7 @@ void init_trial() {
 	if (_state != _prevState) {                       // If ENTERTING READY STATE:
 		_first_lick_received = false;                 	 // Reset tracker of first licks
 		digitalWrite(PIN_FIRST_LICK, LOW);
-		cancelCHRIMSON(false);								// Reset CHRIMSON cancellation pin and tracker
+		cancelStim(false);								// Reset Stim cancellation pin and tracker
 		/*---------Decide Pav vs Op for mixed trials before starting the trial:---------*/
 		if (_params[OPERANT] == 1 && _params[PAVLOVIAN] == 1 && _params[HYBRID] == 0)  {
 			_dice_roll = random(1,100);                   // Random # between 1-100
@@ -840,39 +833,7 @@ void init_trial() {
 			sendMessage("&" + String(EVENT_HYBRID) + " " + String(signedMillis() - _exp_timer));
 			if (_params[_DEBUG]) {sendMessage("-----HYBRID-----");}
 		}
-		/*---------Decide if stimulating CHRIMSON (or NpHR) before starting the trial:---------*/
-		if (_params[P_STIM_UNCONDITIONAL] > 0){  //&& _params[P_STIM_I_NOLICK] == 0) {// (_params[CHRIMSON_STIM_TIME] == 0 || (_params[CHRIMSON_STIM_TIME] > _params[TRIAL_DURATION] + _params[ITI])))  {
-			if (_params[_DEBUG]) {sendMessage("-- Unconditional Stimulation in Use --");}
-			_stimulation_requested = false;				  // Reset the stimulation request here
-			_need2check_non_zero_CHRIMSON = false;				  // Reset check for non-zero time stimulation here
-			_CHRIMSON_receipt_received = false;				  // Reset receipt here
-			_dice_roll = random(1,100);                   // Random # between 1-100
-			if (_dice_roll <= _params[P_STIM_UNCONDITIONAL]) {          // If dice_roll <= the percent of trials that should be stimulated
-				_trial_is_stimulated = true;                                 // Set this trial to stimulated (we will collect event marker when receive receipt)
-				// ------ Debug Mode -------
-				if (_params[_DEBUG]) {sendMessage("-- CHRIMSON Stimulation Trial --");}
-			}
-			else {                                                     // If dice_roll > percent of trials that should be pavlovian
-				_trial_is_stimulated = false;                                // Set this trial to operant
-				// ------ Debug Mode -------
-				if (_params[_DEBUG]) {sendMessage("-- No Stim --");}
-			}
-			/*--------------- If trial to be stimulated from lights-off, init stim here ------------- */
-			if ((_params[CHRIMSON_STIM_TIME] > _params[TRIAL_DURATION] + _params[ITI]) && _trial_is_stimulated && ~_stimulation_requested) {
-				setCHRIMSONTrigger(true);							// Send Stimulation Trigger to Optogenetics Controller
-				_stimulation_requested = true;					// Indicate stim has been requested
-				if (_params[_DEBUG]) {sendMessage("Requested BASELINE CHRIMSON stim from Optogenetics Controller with the Greater than Trial Duration request...");}
-			}
-		}
-		/* need case where checking the nonzero stim time -- note that if the stim time exceeds total time, this is a different case */
-		else if (_params[P_STIM_I_NOLICK] > 0) { //&& ~(_params[CHRIMSON_STIM_TIME] > _params[TRIAL_DURATION] + _params[ITI]))  {
-			if (_params[_DEBUG]) {sendMessage("-- Conditional Stimulation in Use --");}
-			_stimulation_requested = false;				  // Reset the stimulation request here
-			_need2check_non_zero_CHRIMSON = true;				  // Reset check for non-zero time stimulation here
-			_CHRIMSON_receipt_received = false;				  // Reset receipt here
-			_trial_is_stimulated = false; 
-		}
-
+		
 		//-----------------INIT TRIAL CLOCKS and OUTPUTS--------------//
 		_trialTimer = signedMillis();                             // Start _trialTimer
 		// Send event marker (trial_init) to HOST with timestamp
@@ -904,11 +865,18 @@ void init_trial() {
 		
     checkLick();
 
-	if (_CHRIMSON_trigger_on && getCHRIMSONStimReceipt() && !_CHRIMSON_receipt_received) {	 // If received receipt of trigger
-		setCHRIMSONTrigger(false);							// Turn off the trigger
-		_CHRIMSON_receipt_received = true;					// Mark as received
+	if (_chrim_stim_trigger_on && getChrimStimReceipt() && !_chrim_stim_receipt_received) {	 // If received receipt of trigger
+		setChrimStimTrigger(false);							// Turn off the trigger
+		_chrim_stim_receipt_received = true;					// Mark as received
 		// Send event marker (hybrid trial) to HOST with timestamp
-		sendMessage("&" + String(EVENT_CHRIMSON_STIM_END) + " " + String(signedMillis() - _exp_timer));
+		sendMessage("&" + String(EVENT_CHRIM_STIM_END) + " " + String(signedMillis() - _exp_timer));
+	}
+
+	if (_chr2_stim_trigger_on && getChR2StimReceipt() && !_chr2_stim_receipt_received) {	 // If received receipt of trigger
+		setChR2StimTrigger(false);							// Turn off the trigger
+		_chr2_stim_receipt_received = true;					// Mark as received
+		// Send event marker (hybrid trial) to HOST with timestamp
+		sendMessage("&" + String(EVENT_CHR2_STIM_END) + " " + String(signedMillis() - _exp_timer));
 	}
 
 	if (signedMillis() - _random_delay_timer >= _preCueDelay) {// Pre-Cue Delay elapsed -> PRE_WINDOW
@@ -953,7 +921,6 @@ void pre_window() {
 		setCueLED(false);
 		return;
 		}
-	checkCHRIMSONStim();
 
 	if (signedMillis() - _cue_on_time >= _params[CUE_DURATION]) {// Time to turn off Cue
 		setCueLED(false);                                   // Turn Cue LED OFF
@@ -1006,7 +973,6 @@ void response_window() {
 		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 		if (checkQuit()) {return;}
 		if (checkLick()) {return;}
-		checkCHRIMSONStim();
 
 		long current_time = signedMillis() - _cue_on_time; //****Changed to be wrt cue onset (not total trial time)
 		if (_reached_target==0 && current_time >= _params[TARGET]) { // TARGET -> REWARD
@@ -1065,7 +1031,6 @@ void response_window() {
 			~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 			if (checkQuit()) {return;}
 			checkLick();
-			checkCHRIMSONStim();
 
 			long current_time = signedMillis() - _cue_on_time; //****Changed to be wrt cue onset (not total trial time)
 			if (_reached_target==0 && current_time >= _params[TARGET]) { // TARGET -> REWARD
@@ -1123,7 +1088,6 @@ void response_window() {
 			~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 			if (checkQuit()) {return;}
 			if (checkLick()) {return;}
-			checkCHRIMSONStim();
 
 			long current_time = signedMillis() - _cue_on_time; // WRT cue onset
 			if (_reached_target==0 && current_time >= _params[TARGET]) { // If now is target time...record but stay in state (Operant only)
@@ -1181,7 +1145,6 @@ void response_window() {
 				if (checkQuit()) {return;}
 
 				checkLick();
-				checkCHRIMSONStim();
 
 				long current_time = signedMillis() - _cue_on_time; //****Changed to be wrt cue onset (not total trial time)
 				if (_reached_target==0 && current_time >= _params[TARGET]) { // TARGET -> REWARD
@@ -1241,7 +1204,6 @@ void response_window() {
 				if (checkQuit()) {return;}
 
 				if (checkLick()) {return;}
-				checkCHRIMSONStim();
 
 				long current_time = signedMillis()-_cue_on_time; // WRT cue onset
 				if (_reached_target==0 && current_time >= _params[TARGET]) { // If now is target time...record but stay in state (Operant only)
@@ -1310,7 +1272,6 @@ void post_window() {
 	~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 	if (checkQuit()) {return;}
 	if (checkLick()) {return;} // this should break out of state and go back to state list //QD
-	checkCHRIMSONStim();
 
 	if (signedMillis() - _cue_on_time >= _params[TRIAL_DURATION]) {  // TRIAL END -> ITI
 		// Send event marker (trial end) to HOST with timestamp
@@ -1323,11 +1284,6 @@ void post_window() {
 		//------------------------DEBUG MODE--------------------------//  
 		if (_params[_DEBUG]) {sendMessage("TRIAL_DURATION exceeded at " + String(signedMillis() - _cue_on_time));}
 		//----------------------end DEBUG MODE------------------------//
-
-		// Cancel stimulation for EOT
-		if (_trial_is_stimulated && _params[STIM_CANCEL_EOT]==1 && !_CHRIMSON_cancelled) {
-			cancelCHRIMSON(true);
-		} 
 
 		return;                                                   // Exit Fx
 	}  
@@ -1348,7 +1304,6 @@ void reward() {
 		_reward_timer = signedMillis();                        // Start _reward_timer
 		if (_params[REWARD_DURATION] != 0){
 			setReward(true);                                    // Initiate reward delivery
-      setRewardEcho(true);                                // Echo reward delivery - NH
 			playSound(TONE_REWARD);                             // Start reward tone    
 		}
 		// Send event marker (reward) to HOST with timestamp
@@ -1358,27 +1313,7 @@ void reward() {
 		}
 		_prevState = _state;                                // Assign _prevState to REWARD _state
 		sendMessage("$" + String(_state));                  // Send HOST $6 (reward State)  
-
-		// In canceling stim on rewarded trials...
-		if (_trial_is_stimulated && _params[STIM_CANCEL_ON_REW]==1 && !_CHRIMSON_cancelled) {
-			_trial_is_stimulated = false;
-			cancelCHRIMSON(true);
-		} 
-
-		// If trial has a hi/low reward duration
-		if (_params[P_JUICE_HI_OR_LOW] != 0){
-			_dice_roll = random(1,100);                   // Random # between 1-100
-			if (_dice_roll <= _params[P_JUICE_HI_OR_LOW]) {
-				_reward_duration_this_trial = 4*_params[REWARD_DURATION];
-				sendMessage("&" + String(EVENT_JUICE_HIGH) + " " + String(signedMillis() - _exp_timer));
-			}
-			else if (_dice_roll <= 2*_params[P_JUICE_HI_OR_LOW]) {
-				_reward_duration_this_trial = _params[REWARD_DURATION]/4;
-				sendMessage("&" + String(EVENT_JUICE_LOW) + " " + String(signedMillis() - _exp_timer));
-			}      
-			else {_reward_duration_this_trial = _params[REWARD_DURATION];}
-		}
-		else {_reward_duration_this_trial = _params[REWARD_DURATION];}
+		_reward_duration_this_trial = _params[REWARD_DURATION];
 		
 		//------------------------DEBUG MODE--------------------------//  
 		if (_params[_DEBUG]) {sendMessage("Dispensing reward. Duration: " + String(_reward_duration_this_trial));}
@@ -1390,11 +1325,9 @@ void reward() {
 	~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 	if (checkQuit()) {return;}
 	checkLick();
-	checkCHRIMSONStim();
 
 	if (signedMillis() - _reward_timer >= _reward_duration_this_trial && !_reward_dispensed_complete) { // Reward duration elapsed...terminate reward
 		setReward(false);                                   // Stop delivery
-    setRewardEcho(false);                               // Echo stop delivery
 		_reward_dispensed_complete = true;                  // track completion
 		if (_params[_DEBUG]) {
 			sendMessage("Reward terminated at " + String(signedMillis() - _reward_timer) + "ms wrt reward initiation.");
@@ -1448,7 +1381,6 @@ void abort_trial() {
 	~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 	if (checkQuit()) {return;}
 	checkLick();
-	checkCHRIMSONStim();
 
 	if (signedMillis() - _trialTimer - _preCueDelay >= _params[TRIAL_DURATION]) { // Trial Timeout -> ITI
 		// Send event marker (trial end) to HOST with timestamp
@@ -1488,7 +1420,7 @@ void abort_trial() {
 // 	if (checkQuit()) {return;}
 // 	checkShock();
 // 	checkLick();
-// 	checkCHRIMSONStim();
+// 	checkStimStim();
 
 // 	if (signedMillis() - _trialTimer - _preCueDelay >= _params[TRIAL_DURATION]) { // Trial Timeout -> ITI
 // 		// Send event marker (trial end) to HOST with timestamp
@@ -1506,97 +1438,103 @@ void abort_trial() {
 	INTERTRIAL - Enforced ITI with Data Writing and Initialization of new parameters delivered from host
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 void intertrial() {
-	/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-		ACTION LIST -- initialize the new state
-	~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-	static bool isParamsUpdateStarted;              // Initialize tracker of new param reception from HOST - true when new params received
-	static bool isParamsUpdateDone;                 // Set to true upon receiving confirmation signal from HOST ("Over")
-	if (_state != _prevState) {                     // If ENTERTING ITI:
-		_ITI_timer = signedMillis();                           // Start ITI timer
-		setHouseLamp(true);                              // House Lamp ON (if not already)
-		setCueLED(false);                                // Cue LED OFF
-		setReward(false);                                // Stop reward if still going
-    setRewardEcho(false);                            // Stop the reward echo 
-		_prevState = _state;                             // Assign _prevState to ITI _state
-		sendMessage("$" + String(_state));               // Send HOST $7 (ITI State)
-		// Send event marker (ITI) to HOST with timestamp
-		sendMessage("&" + String(EVENT_ITI) + " " + String(signedMillis() - _exp_timer));
-		
-		// Reset state variables
-		_pre_window_elapsed = false;                  // Reset pre_window time tracker
-		_reached_target = false;                      // Reset target time tracker
-		_late_lick_detected = false;                  // Reset late lick detector
-		_reward_dispensed_complete = false;           // Reset tracker of reward dispensal
-    	// _first_lick_received = false;                 // Reset tracker of first licks
+  static bool isParamsUpdateStarted;
+  static bool isParamsUpdateDone;
+  static bool _houseLampOn;
+  static bool isTubeDeployed;
 
-		//=================== INIT HOST COMMUNICATION=================//
-		isParamsUpdateStarted = false;                      // Initialize HOST param message monitor Start
-		isParamsUpdateDone = false;                         // Initialize HOST param message monitor End  
+  // ACTION LIST — only on entering INTERTRIAL
+  if (_state != _prevState) {
+    _ITI_timer = signedMillis();
+    setCueLED(false);
+    setReward(false);
+    _prevState = _state;
+    sendMessage("$" + String(_state));
+    sendMessage("&" + String(EVENT_ITI) + " " + String(signedMillis() - _exp_timer));
 
-		//=================== SEND RESULT CODE=================//
-		if (_resultCode > -1) {                       // If result code exists...
-			sendMessage("`" + String(_resultCode));           // Send result to HOST
-			_resultCode = -1;                                 // Reset result code to null state
-		}
+    _pre_window_elapsed = false;
+    _reached_target = false;
+    _late_lick_detected = false;
+    _reward_dispensed_complete = false;
+    isParamsUpdateStarted = false;
+    isParamsUpdateDone = false;
+    isTubeDeployed = true;  // Assume deployed from previous trial
 
-		//------------------------DEBUG MODE--------------------------//  
-			if (_params[_DEBUG]) {sendMessage("Intertrial.");}
-		//----------------------end DEBUG MODE------------------------//
-	}
+    _chrim_stim_trigger_on = false;
+	_chr2_stim_trigger_on = false;
+    _chrim_stimulation_requested = false;
+	_chr2_stimulation_requested = false;
+    _chrim_stim_receipt_received = false;
+	_chr2_stim_receipt_received = false;
+    _houseLampOn = false;
 
+    if (_resultCode > -1) {
+      sendMessage("`" + String(_resultCode));
+      _resultCode = -1;
+    }
 
-	/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-		TRANSITION LIST -- checks conditions, moves to next state
-	~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-	if (checkQuit()) {return;}
-	checkLick();
-	checkCHRIMSONStim();
+    if (_params[_DEBUG]) {
+      sendMessage("Intertrial.");
+    }
 
-	if (_command == 'P') {                          // Received new param from HOST: format "P _paramID _newValue" ('P' for Parameters)
-		isParamsUpdateStarted = true;                   // Mark transmission start. Don't start next trial until we've finished.
-		_params[_arguments[0]] = _arguments[1];         // Update parameter. Serial input "P 0 1000" changes the 1st parameter to 1000.
-		_state = INTERTRIAL;                            // Return -> ITI
-		if (_params[_DEBUG]) {
-				sendMessage("Parameter " + String(_arguments[0]) + " changed to " + String(_arguments[1]));
-		} 
-		return;                                         // Exit Fx
-	}
-	
-	if (_command == 'O') {                          // HOST transmission complete: HOST sends 'O' for Over.
-		isParamsUpdateDone = true;                      // Mark transmission complete.
-		_state = INTERTRIAL;                            // Return -> ITI
-		return;                                         // Exit Fx
-	}
-	
-	if (signedMillis() - _ITI_timer >= _params[ITI] && (isParamsUpdateDone || !isParamsUpdateStarted))  { // End when ITI ends. If param update initiated, should also wait for update completion signal from HOST ('O' for Over).
-		_state = INIT_TRIAL;                                 // Move -> READY state
-		return;                                         // Exit Fx
-	}
+  }
 
-	_state = INTERTRIAL;                            // No Command -> Cycle back to ITI
+  // STIMULATION LOGIC — runs continuously while in ITI
+  if (signedMillis() - _lastLickTime >= _params[NO_LICK_BEFORE_STIM]) {
+    if (!_chr2_stimulation_requested && !_chrim_stimulation_requested) {sendStimRequest(!_chrim_last);}
+
+    stopStimRequest();
+
+    if (_params[STIM_ITI] == 1) {
+      if ((_chrim_stim_receipt_received && !_houseLampOn) | (_chr2_stim_receipt_received && !_houseLampOn)) {
+        setHouseLamp(true);
+        _houseLampOn = true;
+      }
+    } else {
+      if (!_houseLampOn) {
+        setHouseLamp(true);
+        _houseLampOn = true;
+      }
+    }
+  }
+
+  // TRANSITION LIST
+  if (checkQuit()) return;
+  checkLick();
+
+  if (_command == 'P') {
+    isParamsUpdateStarted = true;
+    _params[_arguments[0]] = _arguments[1];
+    _state = INTERTRIAL;
+    if (_params[_DEBUG]) {
+      sendMessage("Parameter " + String(_arguments[0]) + " changed to " + String(_arguments[1]));
+    }
+    return;
+  }
+
+  if (_command == 'O') {
+    isParamsUpdateDone = true;
+    _state = INTERTRIAL;
+    return;
+  }
+
+  // Don't start next trial until ITI is over, parameters updated, lamp on, and tube is retracted
+  if (
+    signedMillis() - _ITI_timer >= _params[ITI] &&
+    (isParamsUpdateDone || !isParamsUpdateStarted) &&
+    _houseLampOn
+  ) {
+    setStimTrigger(false, _chrim_last);
+	setStimTrigger(false, !_chrim_last);
+    if (_params[_DEBUG]) {
+      sendMessage("ITI Complete");
+    }
+	_state = INIT_TRIAL;
+    return;
+  }
+
+  _state = INTERTRIAL;
 } // End ITI---------------------------------------------------------------------------------------------------------------------
-
-
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	OPTOTAGGING - Optotagging protocol setting frequency and number of pulses, controls Optogenetics Arduino
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-void optotagging() {
-
-
-
-}
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1684,7 +1622,6 @@ bool rxnWindowLickActions() {
 				    if (_params[_DEBUG]) {sendMessage("first lick received");}
 				    digitalWrite(PIN_FIRST_LICK, HIGH);
 
-				    considerFirstLickStim(_lick_time);
 				}
 				// return;
 			}
@@ -1720,7 +1657,6 @@ bool hybridLickActions() {
         _first_lick_received = true;
         if (_params[_DEBUG]) {sendMessage("first lick received");}
         digitalWrite(PIN_FIRST_LICK, HIGH);
-        considerFirstLickStim(_lick_time);
 	}
 	_lick_state = true;                            // Halts lick detection
 	//------------------------DEBUG MODE--------------------------//
@@ -1746,7 +1682,7 @@ void pavlovianLickActions() {
 		_first_lick_received = true;
 		if (_params[_DEBUG]) {sendMessage("first lick received");}
 		digitalWrite(PIN_FIRST_LICK, HIGH);
-		considerFirstLickStim(_lick_time);
+
 	}
 	_lick_state = true;                            // Halts lick detection
 	//------------------------DEBUG MODE--------------------------//
@@ -1770,7 +1706,7 @@ bool operantLickActions() {
       _first_lick_received = true;
       if (_params[_DEBUG]) {sendMessage("first lick received");}
       digitalWrite(PIN_FIRST_LICK, HIGH);
-      considerFirstLickStim(_lick_time);
+
     }
 	_lick_state = true;                            // Halts lick detection
 	_state = REWARD;                               // Move -> REWARD
@@ -1794,7 +1730,6 @@ bool postWindowLickActions() {
 		digitalWrite(PIN_FIRST_LICK, HIGH);
 
 		if (_lick_time < TRIAL_DURATION - 501) { // only consider stim if we have enough time to do so before next trial
-			considerFirstLickStim(_lick_time);
 		}
 	} 
 	_lick_state = true;                            // Halts lick detection
@@ -1822,7 +1757,6 @@ void rewardLickActions() {
 		_first_lick_received = true;
 		if (_params[_DEBUG]) {sendMessage("first lick received");}
 		digitalWrite(PIN_FIRST_LICK, HIGH);
-		considerFirstLickStim(_lick_time);
 	} 
 	_lick_state = true;                            // Halts lick detection
 	if (_params[_DEBUG]) {
@@ -1843,7 +1777,6 @@ void generalLickActions() {
 		_first_lick_received = true;
 		if (_params[_DEBUG]) {sendMessage("first lick received");}
 		digitalWrite(PIN_FIRST_LICK, HIGH);
-		considerFirstLickStim(_lick_time);
 	} 
 	_lick_state = true;                               // Halts lick detection
 	if (_params[_DEBUG]) {sendMessage("Lick detected, tallying lick @ " + String(_lick_time) + "ms");}
@@ -1852,123 +1785,182 @@ void generalLickActions() {
 } // end generalLickActions---------------------------------------------------------------------------------------------------------------------
 
 
-
-
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	Check for CHRIMSON Stim Actions
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-void checkCHRIMSONStim() {
-	if (_params[P_STIM_I_NOLICK] == 1) {
-		// Here we will check if the time has been reached and if the mouse hasn't licked yet. If so, we will then dice roll to stimulate
-		if (signedMillis()-_cue_on_time > _params[CHRIMSON_STIM_TIME] && !_first_lick_received && _need2check_non_zero_CHRIMSON) {
-			if (_params[_DEBUG]) {sendMessage("Making checked non zero CHRIMSON");}
-			_need2check_non_zero_CHRIMSON = false;
-			// Throw dice here to see if trial will be stimulated or not
-			_dice_roll = random(1,100);                   // Random # between 1-100
-			if (_dice_roll <= _params[P_STIM_I_NOLICK]) {_trial_is_stimulated = true;}      
-			else {_trial_is_stimulated = false;}
-		}
-	}
-	/*--------------- If trial to be stimulated in this window, init stim here ------------- */
-	if (signedMillis()-_cue_on_time > _params[CHRIMSON_STIM_TIME] && _trial_is_stimulated && !_stimulation_requested) {
-			setCHRIMSONTrigger(true);							// Send Stimulation Trigger to Optogenetics Controller
-			if (_params[_DEBUG]) {sendMessage("Awaiting receipt of CHRIMSON stim from Optogenetics Controller...");}
-			_stimulation_requested = true;
-			_f_stimwindow_lick_received = false;
-			sendMessage("&" + String(EVENT_CHRIMSON_STIM_REQ) + " " + String(signedMillis() - _exp_timer));
-	}
-	if (_CHRIMSON_trigger_on && getCHRIMSONStimReceipt() && !_CHRIMSON_receipt_received) {	 // If received receipt of trigger
-		if (_params[_DEBUG]) {sendMessage("Received CHRIMSON receipt from Optogenetics Controller. CHRIMSON ON.");}
-		setCHRIMSONTrigger(false);  						// Turn off the trigger
-		_CHRIMSON_receipt_received = true;					// Mark as received
-		// Send event marker (hybrid trial) to HOST with timestamp
-		sendMessage("&" + String(EVENT_CHRIMSON_STIM_END) + " " + String(signedMillis() - _exp_timer));
-	}
-	// Now we check to see if we need to terminate stim because of a behavioral event
-	if (_trial_is_stimulated && !_CHRIMSON_cancelled && _params[STIM_CANCEL_FLICK] == 1 && _first_lick_received) {
-		cancelCHRIMSON(true);
-	}
-	// Now we check to see if we need to terminate stim because of a lick within the stim window
-	if (_trial_is_stimulated && !_CHRIMSON_cancelled && _params[STIM_CANCEL_LICK_WIN_STIM] == 1 && _f_stimwindow_lick_received) {
-		cancelCHRIMSON(true);
-	}
-	
-} // end checkCHRIMSONStim---------------------------------------------------------------------------------------------------------------------
-
-void considerFirstLickStim(long _lick_time) {
-	// check if we should send a stim command now triggered on the first-lick
-	if (_params[P_STIM_ON_FLICK] > 0){  //&& _params[P_STIM_I_NOLICK] == 0) {// (_params[CHRIMSON_STIM_TIME] == 0 || (_params[CHRIMSON_STIM_TIME] > _params[TRIAL_DURATION] + _params[ITI])))  {
-		if (_params[_DEBUG]) {sendMessage("-- Considering stimulation of this first-lick --");}
-		_stimulation_requested = false;				  // Reset the stimulation request here
-		_CHRIMSON_receipt_received = false;				  // Reset receipt here
-		_dice_roll = random(1,100);                   // Random # between 1-100
-
-		// new for 8/1/23: now we need to see which version we're doing...
-		if (_params[IF_FLICKSTIM_EARLY1_REW2_ALL0] == 0 || (_params[IF_FLICKSTIM_EARLY1_REW2_ALL0] == 1 && _lick_time < _params[INTERVAL_MIN]) || (_params[IF_FLICKSTIM_EARLY1_REW2_ALL0] == 2 && _lick_time > _params[INTERVAL_MIN] && _lick_time < _params[INTERVAL_MAX])) {
-			if (_params[_DEBUG]) {sendMessage("Cond 0: "  + String(_params[IF_FLICKSTIM_EARLY1_REW2_ALL0] == 0) + "Cond 1: "  + String((_params[IF_FLICKSTIM_EARLY1_REW2_ALL0] == 1 && _lick_time < _params[INTERVAL_MIN])) + " | Cond2" + String((_params[IF_FLICKSTIM_EARLY1_REW2_ALL0] == 2 && _lick_time > _params[INTERVAL_MIN] && _lick_time < _params[INTERVAL_MAX])));}
-			if (_dice_roll <= _params[P_STIM_ON_FLICK]) {          // If dice_roll <= the percent of trials that should be stimulated
-				_trial_is_stimulated = true;              // Set this trial to stimulated (we will collect event marker when receive receipt)
-				// ------ Debug Mode -------
-				if (_params[_DEBUG]) {sendMessage("-- CHRIMSON Stimulation Trial --");}
-			}
-			else {
-				_trial_is_stimulated = false;                                // Set this trial to operant
-				// ------ Debug Mode -------
-				if (_params[_DEBUG]) {sendMessage("-- No Stim --");}
-			}
-		}
-		else {                                                     // If dice_roll > percent of trials that should be pavlovian
-			_trial_is_stimulated = false;                                // Set this trial to operant
-			// ------ Debug Mode -------
-			if (_params[_DEBUG]) {sendMessage("-- No Stim --");}
-		}
-	}
-
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /*****************************************************
 	HARDWARE CONTROLS
 *****************************************************/
+/*****************************************************
+STIMULATION FUNCTIONS
+*****************************************************/
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	Send Stim Request -- if I want stim and we're in the intertrial setStim Trigger true to turn it on and once it's done turn off
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+void sendStimRequest(bool isChrim) {
+  if (isChrim) {
+	sendChrimStimRequest();
+  } else {
+	sendChR2StimRequest();
+  }
+}
+
+
+void sendChrimStimRequest() {
+  if (_params[STIM_ITI] == 1 && _state == INTERTRIAL) {
+    //------------------------TURN STIM REQUEST ON--------------------------//  
+    setChrimStimTrigger(true);
+    _chrim_stimulation_requested = true;
+	_chrim_last = true;
+
+    //------------------------DEBUG MODE--------------------------//  
+    if (_params[_DEBUG]) sendMessage("ITI: chrimson Trigger Sent");
+    sendMessage("&" + String(EVENT_CHRIM_STIM_REQ) + " " + String(signedMillis() - _exp_timer));
+  }
+} // end sendStimRequest---------------------------------------------------------------------------------------------------------------------
+
+void sendChR2StimRequest() {
+  if (_params[STIM_ITI] == 1 && _state == INTERTRIAL) {
+    //------------------------TURN STIM REQUEST ON--------------------------//  
+    setChR2StimTrigger(true);
+    _chr2_stimulation_requested = true;
+	_chrim_last = false;
+
+    //------------------------DEBUG MODE--------------------------//  
+    if (_params[_DEBUG]) sendMessage("ITI: chr2 Trigger Sent");
+    sendMessage("&" + String(EVENT_CHR2_STIM_REQ) + " " + String(signedMillis() - _exp_timer));
+  }
+} // end sendStimRequest---------------------------------------------------------------------------------------------------------------------
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	Set CHRIMSON Cancel Pin
+	StopStimRequest -- if I want stim and we're in the intertrial setStim Trigger true to turn it on and once it's done turn off
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-void cancelCHRIMSON(bool cancel) {
-	if (cancel) {
-		digitalWrite(PIN_CANCEL_CHRIMSON, HIGH);
-		_CHRIMSON_cancelled = true;
+void stopStimRequest() {
+  stopChrimStimRequest();
+  stopChR2StimRequest();
+}
+
+void stopChrimStimRequest(){
+  //------------------------TURN STIM REQUEST OFF--------------------------//  
+  if (_chrim_stim_trigger_on && getChrimStimReceipt() && !_chrim_stim_receipt_received) {
+    setChrimStimTrigger(false);
+    _chrim_stim_receipt_received = true;
+    //------------------------DEBUG MODE--------------------------//  
+    if (_params[_DEBUG]) sendMessage("ITI: Chrimson stim receipt confirmed.");
+    sendMessage("&" + String(EVENT_CHRIM_STIM_END) + " " + String(signedMillis() - _exp_timer));
+  }
+}
+
+void stopChR2StimRequest(){
+  //------------------------TURN STIM REQUEST OFF--------------------------//  
+  if (_chr2_stim_trigger_on && getChR2StimReceipt() && !_chr2_stim_receipt_received) {
+	setChR2StimTrigger(false);
+	_chr2_stim_receipt_received = true;
+	//------------------------DEBUG MODE--------------------------//  
+	if (_params[_DEBUG]) sendMessage("ITI: ChR2 stim receipt confirmed.");
+	sendMessage("&" + String(EVENT_CHR2_STIM_END) + " " + String(signedMillis() - _exp_timer));
+  }
+}
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	Set OptoStimulating LED (ON/OFF)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+void setStimTrigger(bool turnO, bool isChrim) {
+  if (isChrim) {
+	setChrimStimTrigger(turnO);
+  } else {
+	setChR2StimTrigger(turnO);
+  }
+}
+
+void setChrimStimTrigger(bool turnOn) {
+	if (turnOn)                                                       
+	{                                                                 // Arduino: Trigger Teensy #2 to stimulate with its default params
+		digitalWrite(PIN_CHRIM_STIM, HIGH);                                     // Stim Pin HIGH
+		_chrim_stim_trigger_on = true;                                          // Stim trigger true
+		//------------------------DEBUG MODE--------------------------//  
+			if (_params[_DEBUG]) {sendMessage("Requesting Chrim stimulation on...");}
+		//----------------------end DEBUG MODE------------------------//
+	}
+	else
+	{                                                                 // Arduino: Stop stimulation
+		digitalWrite(PIN_CHRIM_STIM, LOW);                                     // Stim Pin LOW
+		_chrim_stim_trigger_on = false;                                        // Update Stim trigger state
+		//------------------------DEBUG MODE--------------------------// 
+			if (_params[_DEBUG]) {sendMessage("Chrim stimulation off.");}
+		//----------------------end DEBUG MODE------------------------//
+	}
+} // end Set Trigger LED---------------------------------------------------------------------------------------------------------------------
+
+void setChR2StimTrigger(bool turnOn) {
+	if (turnOn)                                                       
+	{                                                                 // Arduino: Trigger Teensy #2 to stimulate with its default params
+		digitalWrite(PIN_CHR2_STIM, HIGH);                                     // Stim Pin HIGH
+		_chr2_stim_trigger_on = true;                                          // Stim trigger true
+		//------------------------DEBUG MODE--------------------------//  
+			if (_params[_DEBUG]) {sendMessage("Requesting CHR2 stimulation on...");}
+		//----------------------end DEBUG MODE------------------------//
+	}
+	else
+	{                                                                 // Arduino: Stop stimulation
+		digitalWrite(PIN_CHR2_STIM, LOW);                                     // Stim Pin LOW
+		_chr2_stim_trigger_on = false;                                        // Update Stim trigger state
+		//------------------------DEBUG MODE--------------------------// 
+			if (_params[_DEBUG]) {sendMessage("CHR2 stimulation off.");}
+		//----------------------end DEBUG MODE------------------------//
+	}
+} // end Set Trigger LED---------------------------------------------------------------------------------------------------------------------
+
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	GET OPTO-STIM RECEIPT (True/False - Boolean)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+bool getStimReceipt(bool isChrim) {
+  if (isChrim) {
+	return getChrimStimReceipt();
+  } else {
+	return getChR2StimReceipt();
+  }
+}
+
+
+bool getChrimStimReceipt() {
+	if (digitalRead(PIN_CHRIM_RECEIPT) == HIGH) {
+		return true;
 	}
 	else {
-		digitalWrite(PIN_CANCEL_CHRIMSON, LOW);
-		_CHRIMSON_cancelled = false;
+		return false;
 	}
-} // end Set House Lamp---------------------------------------------------------------------------------------------------------------------
+} // end Get Stim Receipt---------------------------------------------------------------------------------------------------------------------
+bool getChR2StimReceipt() {
+	if (digitalRead(PIN_CHR2_RECEIPT) == HIGH) {
+		return true;
+	}
+	else {
+		return false;
+	}
+} // end Get Stim Receipt---------------------------------------------------------------------------------------------------------------------
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	Set Stim Cancel Pin
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+void cancelStim(bool cancel) { // Turn on/off the pin that tells the other arduino to cancel stimulation
+	if (cancel) {
+		digitalWrite(PIN_CANCEL_STIM, HIGH);
+		_stim_cancelled = true;
+	}
+	else {
+		digitalWrite(PIN_CANCEL_STIM, LOW);
+		_stim_cancelled = false;
+	}
+} // end Cancel Stim---------------------------------------------------------------------------------------------------------------------
+
+void setPhotometryLED(bool turnOn) { //DS
+	if (turnOn)													   
+	{                                                                 // MOUSE: Turn on Photometry
+		analogWrite(PIN_PHOTOMETRY_PWR, _params[PHOTOMETRY_AOUT]);   
+	} else {
+		analogWrite(PIN_PHOTOMETRY_PWR, 0);                            // MOUSE: Turn off Photometry
+	}
+}
+									                                    // Photometry Pin HIGH
+
 
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2018,20 +2010,6 @@ void setTriggerLED(bool turnOn) {
 		digitalWrite(PIN_IR_LED_TRIGGER, LOW);
 	}
 } // end Set Trigger LED---------------------------------------------------------------------------------------------------------------------
-
-
-
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	Set REWARD ECHO (ON/OFF)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-void setRewardEcho(bool turnOn) {
-	if (turnOn) {
-		digitalWrite(PIN_REWARD_ECHO, HIGH);
-	}
-	else {
-		digitalWrite(PIN_REWARD_ECHO, LOW);
-	}
-} // end Reward Echo---------------------------------------------------------------------------------------------------------------------
 
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2098,50 +2076,6 @@ void setReward(bool turnOn) {
 		//----------------------end DEBUG MODE------------------------//
 	}
 } // end Set Reward---------------------------------------------------------------------------------------------------------------------
-
-
-void setPhotometryLED(bool turnOn) {
-	if (turnOn)													   
-	{                                                                 // MOUSE: Turn on Photometry
-		analogWrite(PIN_PHOTOMETRY_PWR, _params[PHOTOMETRY_AOUT]);   
-	} else {
-		analogWrite(PIN_PHOTOMETRY_PWR, 0);                            // MOUSE: Turn off Photometry
-	}
-}
-									                                    // Photometry Pin HIGH
-
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	Set OptoStimulating LED (ON/OFF)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-void setCHRIMSONTrigger(bool turnOn) {
-	if (turnOn)                                                       
-	{                                                                 // Arduino: Trigger Teensy #2 to stimulate with its default params
-		digitalWrite(PIN_CHRIMSON, HIGH);                                     // CHRIMSON Pin HIGH
-		_CHRIMSON_trigger_on = true;                                          // CHRIMSON trigger true
-		//------------------------DEBUG MODE--------------------------//  
-			if (_params[_DEBUG]) {sendMessage("Requesting CHRIMSON stimulation on...");}
-		//----------------------end DEBUG MODE------------------------//
-	}
-	else
-	{                                                                 // Arduino: Stop stimulation
-		digitalWrite(PIN_CHRIMSON, LOW);                                     // CHRIMSON Pin LOW
-		_CHRIMSON_trigger_on = false;                                        // Update CHRIMSON trigger state
-		//------------------------DEBUG MODE--------------------------// 
-			if (_params[_DEBUG]) {sendMessage("CHRIMSON stimulation off.");}
-		//----------------------end DEBUG MODE------------------------//
-	}
-} // end Set Trigger LED---------------------------------------------------------------------------------------------------------------------
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	GET OPTO-STIM RECEIPT (True/False - Boolean)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-bool getCHRIMSONStimReceipt() {
-	if (digitalRead(PIN_RECEIPT) == HIGH) {
-		return true;
-	}
-	else {
-		return false;
-	}
-} // end Get CHRIMSON Receipt---------------------------------------------------------------------------------------------------------------------
 
 
 

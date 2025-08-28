@@ -94,6 +94,7 @@ Arduino Pin Outs (Mode: TEENSY)
 *****************************************************/
 // Digital IN -- Receives Opto Request form Boss Arduino (CHRIMSON ONLY)
 #define PIN_CHRIMSON_TRIGGER               25       // CHRIMSON Trigger Pin    (DUE = 34)  (MEGA = 34)  (UNO = 5?)  (TEENSY = 6?)
+#define PIN_CHR2_TRIGGER                   24       // CHR2 Trigger Pin    (DUE = 34)  (MEGA = 34)  (UNO = 5?)  (TEENSY = 6?)
 #define PIN_TRIAL_INIT                      5       // Aligns Trial Start  (DUE = 34)  (MEGA = 34)  (UNO = 5?)  (TEENSY = 6?)
 #define PIN_CUE_ON                         26       // Aligns Cue On       (DUE = 34)  (MEGA = 34)  (UNO = 5?)  (TEENSY = 6?)
 #define PIN_CANCEL                         20       // Cancels ongoing stim if high                             (TEENSY = 6?)
@@ -102,7 +103,7 @@ Arduino Pin Outs (Mode: TEENSY)
 #define PIN_CHRIMSON_STIM                   23      // I think this is supposed to control the LED, but i'm going to make it just a digital readout of the Analog 
 #define PIN_CHRIMSON_RECEIPT                 7      // Chrimson Receipt Pin    (DUE = 35)  (MEGA = 28)  (UNO =  4)  (TEENSY = 4)
 #define PIN_CHR2_STIM                       22      //  Digital Read out of ChR2 analog stimulation -- fed to NIDAQ
-#define PIN_CHR2_RECEIPT                    5
+#define PIN_CHR2_RECEIPT                     4
 #define PIN_PHOTOMETRY_LED                  21      // TTL to photometry LEDS -- Control the Photometry LED Gating
 
 //Analog Output Stuff
@@ -403,9 +404,12 @@ static int _resultCode                = -1;   // Reset result code
 // variables here tell communicates between boss and this arduino of when to start/end stim and what type of stim is happening
 static signed long _exp_timer           = 0;
 static bool _CHRIMSON_trigger_on          = false;
+static bool _CHR2_trigger_on          = false;
 static bool _trial_is_stimulated      = false;
-static bool _stimulation_requested    = false;
+static bool _chrimson_stimulation_requested    = false;
+static bool _chR2_stimulation_requested    = false;
 static bool _CHRIMSON_receipt_received    = false;
+static bool _CHR2_receipt_received    = false;
 static bool _BOSS_CHRIMSON_stim_in_progress = false;
 static bool _BOSS_CHR2_stim_in_progress = false;
 static bool _UI_CHRIMSON_stim_in_progress = false;
@@ -453,10 +457,11 @@ void setup()
   pinMode(PIN_CHRIMSON_STIM, OUTPUT);                       // Digital Record of Chrimson stimulation
   pinMode(PIN_CHRIMSON_RECEIPT, OUTPUT);                    // SEND message to BOSS arduino that stim over
   pinMode(PIN_CHR2_STIM, OUTPUT);                           // Digital Record of CHR2
-  pinMode(PIN_CHR2_RECEIPT, OUTPUT);                    // SEND message to BOSS arduino that stim over
+  pinMode(PIN_CHR2_RECEIPT, OUTPUT);                        // SEND message to BOSS arduino that stim over
   pinMode(PIN_PHOTOMETRY_LED, OUTPUT);                      // Toggles Photometry
   // INPUTS
-  pinMode(PIN_CHRIMSON_TRIGGER, INPUT);                     // Receives Stim Request from Boss
+  pinMode(PIN_CHRIMSON_TRIGGER, INPUT);
+  pinMode(PIN_CHR2_TRIGGER, INPUT);                         // Receives Stim Request from Boss
   pinMode(PIN_TRIAL_INIT, INPUT);                           // Aligns Trial Start -> T with house lamp on Boss
   pinMode(PIN_CUE_ON, INPUT);                               // Aligns Cue -> T with Cue on Boss
   pinMode(PIN_CANCEL, INPUT);                               // Turns off STIM
@@ -499,10 +504,13 @@ void mySetup()
     sendMessage("Initial CHRIMSON pulse width = " + String(_params[CHRIMSON_PULSE_WIDTH]) + " ms, IPI = " + String(_params[CHRIMSON_IPI]) + " ms.");
   }
   _CHRIMSON_trigger_on        = false;
+  _CHR2_trigger_on        = false;
   _photometry_LED_enabled   = true;
   _trial_is_stimulated    = false;
-  _stimulation_requested  = false;
+  _chrimson_stimulation_requested  = false;
+  _chR2_stimulation_requested  = false;
   _CHRIMSON_receipt_received  = false;
+  _CHR2_receipt_received  = false;
   _BOSS_CHRIMSON_stim_in_progress= false;
   _UI_CHRIMSON_stim_in_progress= false;
   //_duty_state_CHRIMSON        = false;
@@ -725,7 +733,7 @@ void wait_request_state() {
   checkReferenceEvent() ;                                                       // Check if the Cue has gone off
   if (checkParamUpdate()) {return;}                                             // If true, we jump to param update state and hold there till done, at expense of some error in timing of stimulation events, which we will record and warn USER thereof
   if (checkChrimsonRequest()) {return;}                                         // If true, jump to CHRIMSON stimulator state. Check for a new stimulation request. If ongoing stim in progress, this overwrites previous**
-  if(checkChr2Request()){return;}                                               // Allows me to do ChR2 stim from UI               
+  if (checkChr2Request()){return;}                                               // Allows me to do ChR2 stim from UI               
   checkPhotometryLED();   
   if (_command == 'L')
   	{
@@ -991,7 +999,20 @@ bool checkChrimsonRequest() {
 
 // === Function: checkChR2Request === //
 bool checkChr2Request() {
-  if (_command == 'D') {
+  if (digitalRead(PIN_CHR2_TRIGGER)) {
+      if (_params[_DEBUG]) {sendMessage("Received CHR2 request from BOSS arduino. Sending receipt.");}
+      sendMessage("&" + String(EVENT_BOSS_CHR2_REQUEST) + " " + String(signedMillis() - _exp_timer));
+      _UI_CHR2_stim_in_progress = false;
+      _BOSS_CHR2_stim_in_progress = true;
+      stimulateChR2();
+      //setChR2Receipt(true);
+      //sendMessage("&" + String(EVENT_BOSS_CHR2_STIM_BEGIN) + " " + String(_time_CHR2_stimulated - _exp_timer));
+
+      _state = CHR2_STIM_STATE;
+      setChR2Receipt(true);
+      return true;
+    }
+    else if (_command == 'D') {
     if (_params[_DEBUG]) sendMessage("Received CHR2 request from HOST. Sending receipt to BOSS.");
     sendMessage("&" + String(EVENT_UI_CHR2_REQUEST) + " " + String(signedMillis() - _exp_timer));
     _UI_CHR2_stim_in_progress = true;
@@ -1015,6 +1036,7 @@ void checkStimChrimson() {
   if (currentTrain >= 1) {
     currentTrain = 0;
     pulseIndex = 0;
+    setChrimsonReceipt(false);
     _state = WAIT_REQUEST_STATE;
   }
 }
@@ -1287,6 +1309,8 @@ void runChrimsonTrain() {
       _UI_CHRIMSON_stim_in_progress = false;
       _BOSS_CHRIMSON_stim_in_progress = false;
       _resultCode = -1;
+      //set chrimson receipt low
+      setChrimsonReceipt(false);
       _state = WAIT_REQUEST_STATE;
       singleTrainMode = false;
     }
@@ -1337,6 +1361,7 @@ void runChR2Train() {
       _UI_CHR2_stim_in_progress = false;
       _BOSS_CHR2_stim_in_progress = false;
       _resultCode = -1;
+      setChR2Receipt(false);
       _state = WAIT_REQUEST_STATE;
       singleTrainMode = false;
     }
