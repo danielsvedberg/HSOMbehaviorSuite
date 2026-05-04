@@ -1201,8 +1201,14 @@ void runChR2ChrimsonPulses() {
     return;
   }
   
-  if (chrimsonidx >= 6) chrimsonidx = 0; // Reset Chrimson index if it exceeds the number of aouts
-  if (chr2idx >= 6) chr2idx = 0; // Reset ChR2 index if it exceeds the number of aouts
+  if (chrimsonidx >= 6){
+    chrimsonidx = 0; // Reset Chrimson index if it exceeds the number of aouts
+    dingdong = false; // Ensure we start with Chrimson in the next train
+  }
+  if (chr2idx >= 6){
+    chr2idx = 0; // Reset ChR2 index if it exceeds the number of aouts
+    dingdong = true; // Ensure we start with ChR2 in the next train
+  }
 
   // === Start pulse ===
   if (!inPulse && pulseIndex < _params[CHRIMSON_CHR2_NUM_PULSES] && (millis() - ipiTimer >= (_params[CHRIMSON_CHR2_IPI]))) {
@@ -1211,11 +1217,9 @@ void runChR2ChrimsonPulses() {
     if (dingdong) {
       setAnalogOutput(1, chrimsonLadder[chrimsonidx]);  // Chrimson
       chrimsonidx++;
-      dingdong = false;
     } else {
       setAnalogOutput(2, chr2Ladder[chr2idx]);  // ChR2
       chr2idx++;
-      dingdong = true;
     }
     pulseTimer = millis();
     inPulse = true;
