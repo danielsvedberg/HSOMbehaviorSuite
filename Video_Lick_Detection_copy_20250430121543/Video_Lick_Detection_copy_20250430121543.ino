@@ -1316,7 +1316,7 @@ void reward() {
 		_reward_timer = signedMillis();                        // Start _reward_timer
 		if (_params[REWARD_DURATION] != 0){
 			setReward(true);                                    // Initiate reward delivery
-      setRewardEcho(true);                                // Echo reward delivery - NH
+      		setRewardEcho(true);                                // Echo reward delivery - NH
 			playSound(TONE_REWARD);                             // Start reward tone    
 		}
 		// Send event marker (reward) to HOST with timestamp

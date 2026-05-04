@@ -15,6 +15,7 @@
 	
 /*	New to THIS version:
  *   
+	09/21/2025 ---- BV: added NO_LICK_BEFORE_NEXT_TRIAL
 	8/1/24 ---- added lick echo (overdue!! from rig 1 code MAR 20 2024 13hr) | "RIG1 LATE AH AUG 1 2024 1750h";
 				set pinouts for rig 1
 	7/11/24 ---- QD attempts to add LATE window updates
@@ -221,12 +222,14 @@ Available pins for 3.4: 4-11 20-23
 
 #define PIN_FIRST_LICK	        50 // other rooms 12// ephys room 9  // Sends receipt of first lick -- used to halt stimulation 	 12 (TEENSY = 12)	(TEENSY3.4 ?)							 1 (TEENSY = 1)	(TEENSY3.4 21)
 #define PIN_CANCEL_STIM	        26 // other rooms 1// ephys room 10   // Halt stimulation 	  
-#define PIN_CHRIM_STIM         	24 // other rooms 10// ephys room 8  // Trigger 2nd Arduino for Stim stim 						 10 (TEENSY = 10) (TEENSY3.4 10)
+#define PIN_CHRIM_STIM         	20 // other rooms 10// ephys room 8  // Trigger 2nd Arduino for Stim stim 						 10 (TEENSY = 10) (TEENSY3.4 10)
 #define PIN_CHR2_STIM			25		//					 1 (TEENSY = 1)	(TEENSY3.4 21)
 #define PIN_HOUSE_LAMP          23 // others 6// ephys room 0   // House Lamp Pin         6 (DUE = 34)  (MEGA = 34)  (UNO = 5?)  (TEENSY = 6)	(TEENSY3.4 6)
 #define PIN_LED_CUE             22 //others 4// ephys room 7   // Cue LED Pin            4 (DUE = 35)  (MEGA = 28)  (UNO =  4)  (TEENSY = 4)	(TEENSY3.4 4)
 #define PIN_LICK_ECHO	        21 // ephys room NC   // lick echo 
-#define PIN_REWARD              20 //other rooms 7 // ephys room 2   // Reward Pin             7 (DUE = 37)  (MEGA = 52)  (UNO =  7)  (TEENSY = 7)	(TEENSY3.4 7)
+//
+#define PIN_REWARD              12 //other rooms 7 // ephys room 2   // Reward Pin             7 (DUE = 37)  (MEGA = 52)  (UNO =  7)  (TEENSY = 7)	(TEENSY3.4 7)
+#define PIN_REWARD_ECHO         24 // other rooms 3// ephys room 11   // Reward Echo Pin        3 (DUE = 36)  (MEGA = 53)  (UNO =  8)  (TEENSY = 3)	(TEENSY3.4 3)
 #define PIN_IR_LED_TRIGGER       9 // other rooms 9// ephys room 3   // IR LED Trigger Pin 										 9 (TEENSY = 9)	(TEENSY3.4 9)
 #define PIN_3_3                  6 // other rooms 11// ephys room 16  // 3.3V src 													 11 (TEENSY = 11) (TEENSY3.4 11)
 #define PIN_IR_HOUSE	         0 // other rooms 0// ephys room 15   // IR Houselamp for camera 									 0 (TEENSY = 0)	(TEENSY3.4 20)
@@ -236,8 +239,7 @@ Available pins for 3.4: 4-11 20-23
 #define PIN_SPEAKER        		4//others 5// ephys room 6   	// 5Speaker Pin           5 (DUE =  2)  (MEGA =  8)  (UNO =  9) (TEENSY = 5)	(TEENSY3.4 5)
 
 // Digital IN
-#define PIN_CHRIM_RECEIPT       7//others 8// ephys room 1  	// Confirms Optogenetics Command Received 					 8  (TEENSY = 8)	(TEENSY3.4 8)
-#define PIN_CHR2_RECEIPT		12	//						 8  (TEENSY = 8)	(TEENSY3.4 8)
+#define PIN_STIM_RECEIPT       7//others 8// ephys room 1  	// Confirms Optogenetics Command Received 					 8  (TEENSY = 8)	(TEENSY3.4 8)
 #define PIN_CAMO           		31//others 16 // ephys room 4
 #define PIN_LICK           		5//others 2// ephys room 5    // 6Lick Pin              2 (DUE = 36)  (MEGA =  2)  (UNO =  2)  (TEENSY = 2)	(TEENSY3.4 22)
 
@@ -414,7 +416,9 @@ enum ParamID
 	EARLY_LICK_ABORT,               // 1 to Abort with Early Licks in window (ms)
 	ABORT_MIN,                      // Miminum time post cue before lick causes abort (ms)
 	ABORT_MAX,                      // Maximum time post cue before abort unavailable (ms)
-	P_PAVLOVIAN,                   // Percent of Trials to be pavlovian
+	P_PAVLOVIAN,                   	// Percent of Trials to be pavlovian
+	NO_LICK_BEFORE_NEXT_TRIAL,      // how long to wait detecting no licks before next trial (ms)
+	NO_LICK_BEFORE_CUE,      	// 1 to reset delay timer between houselamp off and cue onset when lick is detected
 	NO_LICK_BEFORE_STIM,            // how long to wait detecting no licks before doing a stim -NH
 	STIM_ITI,						// how long after stim to wait before going to ITI -NH
 	PHOTOMETRY,					  // 1 to enable photometry stimulation
@@ -444,6 +448,8 @@ static const char *_paramNames[] =
 	"ABORT_MIN",
 	"ABORT_MAX",
 	"P_PAVLOVIAN",
+	"NO_LICK_BEFORE_NEXT_TRIAL",
+	"NO_LICK_BEFORE_CUE",
 	"NO_LICK_BEFORE_STIM",
 	"STIM_ITI",
 	"PHOTOMETRY",
@@ -466,11 +472,13 @@ int _params[_NUM_PARAMS] =
 	400,                            // RANDOM_DELAY_MIN
 	1500,                           // RANDOM_DELAY_MAX
 	100,                            // CUE_DURATION
-	40,                             // REWARD_DURATION
+	30,                             // REWARD_DURATION
 	1,                              // EARLY_LICK_ABORT
 	0,                            	// ABORT_MIN ** use 500 for beginner task
 	3333,                           // ABORT_MAX
 	0,                              // P_PAVLOVIAN
+	0,								              // NO_LICK_BEFORE_NEXT_TRIAL
+	0,								              // NO_LICK_BEFORE_CUE
 	0,								// NO_LICK_BEFORE_STIM -NH
 	0,								// STIM_ITI
 	0,								// PHOTOMETRY
@@ -497,6 +505,7 @@ static bool _reached_target          = false;    // Track if target time reached
 static bool _late_lick_detected      = false;    // Track if late lick detected
 static long _exp_timer               = 0;        // Experiment timer, reset to signedMillis() at every soft reset
 static long _lick_time               = 0;        // Tracks most recent lick time
+static long _lick_time_abs         	 = 0;        // Tracks absolute most recent lick time
 static long _cue_on_time             = 0;        // Tracks time cue has been displayed for
 static long _response_window_timer   = 0;        // Tracks time in response window state
 static long _reward_timer            = 0;        // Tracks time in reward state
@@ -535,6 +544,7 @@ void setup()
 	pinMode(PIN_LED_CUE, OUTPUT);               // LED for 'start' cue
 	pinMode(PIN_SPEAKER, OUTPUT);               // Speaker for cue/correct/error tone
 	pinMode(PIN_REWARD, OUTPUT);                // Reward OUT
+	pinMode(PIN_REWARD_ECHO, OUTPUT);           // Reward echo
 	pinMode(PIN_3_3, OUTPUT);                   // A 3.3V src
 	// pinMode(PIN_IR_HOUSE, OUTPUT);				// An IR Houselamp - always on
 	pinMode(PIN_LICK_ECHO, OUTPUT);				// Lick echo
@@ -545,8 +555,7 @@ void setup()
 	pinMode(PIN_CANCEL_STIM, OUTPUT);			// Send cancel stim pulse to optocontroller
 	// INPUTS
 	pinMode(PIN_LICK, INPUT);                   // Lick detector
-	pinMode(PIN_CHRIM_RECEIPT, INPUT);				// Confirms Optogenetics Controller received command, used for event marker
-	pinMode(PIN_CHR2_RECEIPT, INPUT);				// Confirms Optogenetics Command Received
+	pinMode(PIN_STIM_RECEIPT, INPUT);				// Confirms Optogenetics Controller received command, used for event marker
 	pinMode(PIN_CAMO, INPUT);					// Simply relays CamO to CED
 	analogWriteResolution(ANALOG_WRITE_RESOLUTION);           // Allows analogwrite??
 	pinMode(PIN_PHOTOMETRY_PWR, OUTPUT);		// Photometry LED power control
@@ -684,6 +693,7 @@ void mySetup()
 	_late_lick_detected     	= false;    // Track if late lick detected
 	_exp_timer		        	= signedMillis();	// Experiment timer, reset to signedMillis() at every soft reset
 	_lick_time              	= 0;        // Tracks most recent lick time
+	_lick_time_abs           	= 0;        // Tracks absolute most recent lick time
 	_cue_on_time            	= 0;        // Tracks time cue has been displayed for
 	_response_window_timer  	= 0;        // Tracks time in response window state
 	_reward_timer           	= 0;        // Tracks time in reward state
@@ -863,16 +873,16 @@ void init_trial() {
 		return;
 	}
 		
-    checkLick();
+  checkLick();
 
-	if (_chrim_stim_trigger_on && getChrimStimReceipt() && !_chrim_stim_receipt_received) {	 // If received receipt of trigger
+	if (_chrim_stim_trigger_on && getStimReceipt() && !_chrim_stim_receipt_received) {	 // If received receipt of trigger
 		setChrimStimTrigger(false);							// Turn off the trigger
 		_chrim_stim_receipt_received = true;					// Mark as received
 		// Send event marker (hybrid trial) to HOST with timestamp
 		sendMessage("&" + String(EVENT_CHRIM_STIM_END) + " " + String(signedMillis() - _exp_timer));
 	}
 
-	if (_chr2_stim_trigger_on && getChR2StimReceipt() && !_chr2_stim_receipt_received) {	 // If received receipt of trigger
+	if (_chr2_stim_trigger_on && getStimReceipt() && !_chr2_stim_receipt_received) {	 // If received receipt of trigger
 		setChR2StimTrigger(false);							// Turn off the trigger
 		_chr2_stim_receipt_received = true;					// Mark as received
 		// Send event marker (hybrid trial) to HOST with timestamp
@@ -1304,6 +1314,7 @@ void reward() {
 		_reward_timer = signedMillis();                        // Start _reward_timer
 		if (_params[REWARD_DURATION] != 0){
 			setReward(true);                                    // Initiate reward delivery
+			//setRewardEcho(true);
 			playSound(TONE_REWARD);                             // Start reward tone    
 		}
 		// Send event marker (reward) to HOST with timestamp
@@ -1521,6 +1532,7 @@ void intertrial() {
   // Don't start next trial until ITI is over, parameters updated, lamp on, and tube is retracted
   if (
     signedMillis() - _ITI_timer >= _params[ITI] &&
+		signedMillis() - _lick_time_abs >= _params[NO_LICK_BEFORE_NEXT_TRIAL] &&
     (isParamsUpdateDone || !isParamsUpdateStarted) &&
     _houseLampOn
   ) {
@@ -1566,6 +1578,7 @@ bool checkQuit() {
 bool checkLick() {
 	if (getLickState()) {                            // MOUSE: "Licked"
 		if (!_lick_state) {                               // If a new lick initiated
+			_lick_time_abs = signedMillis();
 			if (!_f_stimwindow_lick_received) {_f_stimwindow_lick_received = true;}
 			if (_state == INIT_TRIAL) {preCueLickActions();}
 			if (_state == PRE_WINDOW) {return rxnWindowLickActions();}
@@ -1598,6 +1611,11 @@ void preCueLickActions() {
 	sendMessage("&" + String(EVENT_LICK) + " " + String(signedMillis() - _exp_timer));
 	_lick_state = true;                            		 // Halts lick detection
 	if (_params[_DEBUG]) {sendMessage("Pre-cue lick detected, tallying lick @ " + String(_lick_time - _preCueDelay) + "ms wrt Cue ON");}
+	
+	if (_params[NO_LICK_BEFORE_CUE] == 1) {
+		_random_delay_timer = signedMillis();
+	}
+
 } // end pre-cue-lick actions---------------------------------------------------------------------------------------------------------------------
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	Rxn Window Lick Actions
@@ -1839,7 +1857,7 @@ void stopStimRequest() {
 
 void stopChrimStimRequest(){
   //------------------------TURN STIM REQUEST OFF--------------------------//  
-  if (_chrim_stim_trigger_on && getChrimStimReceipt() && !_chrim_stim_receipt_received) {
+  if (_chrim_stim_trigger_on && getStimReceipt() && !_chrim_stim_receipt_received) {
     setChrimStimTrigger(false);
     _chrim_stim_receipt_received = true;
     //------------------------DEBUG MODE--------------------------//  
@@ -1850,7 +1868,7 @@ void stopChrimStimRequest(){
 
 void stopChR2StimRequest(){
   //------------------------TURN STIM REQUEST OFF--------------------------//  
-  if (_chr2_stim_trigger_on && getChR2StimReceipt() && !_chr2_stim_receipt_received) {
+  if (_chr2_stim_trigger_on && getStimReceipt() && !_chr2_stim_receipt_received) {
 	setChR2StimTrigger(false);
 	_chr2_stim_receipt_received = true;
 	//------------------------DEBUG MODE--------------------------//  
@@ -1908,35 +1926,15 @@ void setChR2StimTrigger(bool turnOn) {
 	}
 } // end Set Trigger LED---------------------------------------------------------------------------------------------------------------------
 
-
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	GET OPTO-STIM RECEIPT (True/False - Boolean)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-bool getStimReceipt(bool isChrim) {
-  if (isChrim) {
-	return getChrimStimReceipt();
-  } else {
-	return getChR2StimReceipt();
-  }
-}
-
-
-bool getChrimStimReceipt() {
-	if (digitalRead(PIN_CHRIM_RECEIPT) == HIGH) {
+bool getStimReceipt() {
+	if (digitalRead(PIN_STIM_RECEIPT) == HIGH) {
 		return true;
 	}
 	else {
 		return false;
 	}
 } // end Get Stim Receipt---------------------------------------------------------------------------------------------------------------------
-bool getChR2StimReceipt() {
-	if (digitalRead(PIN_CHR2_RECEIPT) == HIGH) {
-		return true;
-	}
-	else {
-		return false;
-	}
-} // end Get Stim Receipt---------------------------------------------------------------------------------------------------------------------
+
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	Set Stim Cancel Pin
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
@@ -2063,22 +2061,39 @@ void playSound(SoundEventFrequencyEnum soundEventFrequency) {
 void setReward(bool turnOn) {
 	if (turnOn)                                                       
 	{                                                                 // MOUSE: Deliver Reward = TRUE
-		digitalWrite(PIN_REWARD, HIGH);                                // Reward Pin HIGH                             
+		digitalWrite(PIN_REWARD, HIGH);
+		digitalWrite(PIN_REWARD_ECHO, HIGH);                                // Reward Pin HIGH                             
+		                                // Reward Pin HIGH                             
 		//------------------------DEBUG MODE--------------------------//  
 			// if (_params[_DEBUG]) {sendMessage("Dispensing Reward");}
 		//----------------------end DEBUG MODE------------------------//
 	}
 	else
 	{                                                                 // MOUSE: Stop Reward
-		digitalWrite(PIN_REWARD, LOW);                                     // Reward Pin LOW
+		digitalWrite(PIN_REWARD, LOW);
+		digitalWrite(PIN_REWARD_ECHO, LOW);                                      // Reward Pin LOW
 		//------------------------DEBUG MODE--------------------------// 
 			// if (_params[_DEBUG]) {sendMessage("Terminating Reward");}
 		//----------------------end DEBUG MODE------------------------//
 	}
 } // end Set Reward---------------------------------------------------------------------------------------------------------------------
 
-
-
+/*void setRewardEcho(bool turnOn) {
+	if (turnOn)                                                       
+	{                                                                 // MOUSE: Deliver Reward = TRUE
+		digitalWrite(PIN_REWARD_ECHO, HIGH);                                // Reward Pin HIGH                             
+		//------------------------DEBUG MODE--------------------------//  
+			// if (_params[_DEBUG]) {sendMessage("Dispensing Reward");}
+		//----------------------end DEBUG MODE------------------------//
+	}
+	else
+	{                                                                 // MOUSE: Stop Reward
+		digitalWrite(PIN_REWARD_ECHO, LOW);                                     // Reward Pin LOW
+		//------------------------DEBUG MODE--------------------------// 
+			// if (_params[_DEBUG]) {sendMessage("Terminating Reward");}
+		//----------------------end DEBUG MODE------------------------//
+	}
+} // end Set Reward---------------------------------------------------------------------------------------------------------------------*/
 
 
 

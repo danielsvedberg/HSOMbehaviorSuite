@@ -459,7 +459,7 @@ classdef TwoColorExperimentSvedberg < handle
                 p.addParameter('stepSizeMultiplierGrad', 0.25, @isnumeric)
                 p.addParameter('stepSizeConst', 250)
                 p.addParameter('powerMeterThreshold', 50e-6)
-                p.addParameter('wavelengths', [555,465], @isnumeric)
+                p.addParameter('wavelengths', [600,465], @isnumeric)
             
                 p.parse(varargin{:});
                 p = p.Results;
@@ -491,7 +491,7 @@ classdef TwoColorExperimentSvedberg < handle
                 meter.setAttenuation(0);
                 meter.setAverageTime(0.01);
                 meter.setTimeout(1000);
-                meter.setWaveLength(555);
+                meter.setWaveLength(600);
                 meter.sensorInfo;
                 meter.setPowerAutoRange(1);
                 pause(5);
@@ -623,7 +623,7 @@ classdef TwoColorExperimentSvedberg < handle
                 p.addParameter('stepSizeMultiplierGrad', 0.25, @isnumeric)
                 p.addParameter('stepSizeConst', 250)
                 p.addParameter('powerMeterThreshold', 50e-6)
-                p.addParameter('wavelengths', [555, 465], @isnumeric)
+                p.addParameter('wavelengths', [600, 465], @isnumeric)
             
                 p.parse(varargin{:});
                 p = p.Results;
@@ -894,8 +894,8 @@ classdef TwoColorExperimentSvedberg < handle
         
             % Use correct ChR2 wavelength
             if ~isfield(tp, 'wavelengths') || numel(tp.wavelengths) < 2
-                warning('Missing or incomplete wavelengths in Params. Defaulting to [555, 465].');
-                tp.wavelengths = [555, 465];
+                warning('Missing or incomplete wavelengths in Params. Defaulting to [600, 465].');
+                tp.wavelengths = [600, 465];
             end
             meter.setWaveLength(tp.wavelengths(iLaser));
             meter.sensorInfo;
@@ -1178,7 +1178,7 @@ classdef TwoColorExperimentSvedberg < handle
                 powers(1:length(chr2P), 2) = chr2Power;
             
                 % --- Assign to object ---
-                obj.Params.wavelengths = [555, 465];  % Chrimson = laser 1, ChR2 = laser 2
+                obj.Params.wavelengths = [600, 465];  % Chrimson = laser 1, ChR2 = laser 2
                 obj.Params.targetPowers_Chrimson = chrP;
                 obj.Params.targetPowers_ChR2 = chr2P;
                 obj.Results.aoutValues = aoutValues;
