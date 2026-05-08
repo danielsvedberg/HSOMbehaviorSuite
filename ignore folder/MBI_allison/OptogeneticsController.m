@@ -22,43 +22,41 @@ classdef OptogeneticsController < handle
 	%		Methods
 	%----------------------------------------------------
 	methods
-        function obj = OptogeneticsController(varargin)
-            p = inputParser();
-            p.addParameter('COM','', @ischar);
-            p.addParameter('noGUI', false, @islogical);
-            p.parse(varargin{:});
-            comPort = p.Results.COM;
-            noGUI = p.Results.noGUI;
-        
-            if isempty(comPort)
-                arduinoPortName = OptogeneticsController.QueryPort();
-            else
-                arduinoPortName = comPort;
-            end
-        
-            % Splash screen (optional)
-            if ~noGUI && ~strcmp(arduinoPortName, '/offline')
-                obj.CreateDialog_Splash();
-            end
-        
-            % Establish arduino connection
-            obj.Arduino = ArduinoConnection(arduinoPortName);
-        
-            % GUI setup
-            if ~noGUI
-                obj.CreateDialog_ExperimentControl();
-                obj.CreateDialog_Monitor();
-                obj.CreateDialog_TaskScheduler();
-            end
-        
-            % Close splash screen (optional)
-            if ~noGUI && ~strcmp(arduinoPortName, '/offline')
-                obj.CloseDialog_Splash();
-            end
-        
-            % Set back-reference
-            obj.Arduino.OptogeneticsController = obj;
-        end
+		function obj = OptogeneticsController()
+			% Find arduino port
+			arduinoPortName = OptogeneticsController.QueryPort();
+
+			% Splash
+			if ~strcmp(arduinoPortName, '/offline')
+				obj.CreateDialog_Splash()
+			end
+
+			% Establish arduino connection
+			obj.Arduino = ArduinoConnection(arduinoPortName);
+
+			% Creata Experiment Control window with all the knobs and buttons you need to set up an experiment. 
+			obj.CreateDialog_ExperimentControl()
+
+			% Create Monitor window with all thr trial results and plots and stuff so the Grad Student is ON TOP OF THE SITUATION AT ALL TIMES.
+			obj.CreateDialog_Monitor()
+
+			% 9-23-23: adding task scheduler, comment out to remove as default
+			% Create Task Scheduler
+			obj.CreateDialog_TaskScheduler()
+			if isfield(obj.Rsc, 'TaskScheduler') && isvalid(obj.Rsc.TaskScheduler)
+				position = obj.Rsc.TaskScheduler.OuterPosition(1:2) + [0, obj.Rsc.TaskScheduler.OuterPosition(4)];
+			else
+				position = [];
+			end
+
+			% Kill splash
+			if ~strcmp(arduinoPortName, '/offline')
+				obj.CloseDialog_Splash()
+			end
+
+			% This gives the Optocontroller handle to Arduino Connection
+			obj.Arduino.OptogeneticsController = obj;
+		end
 
 		function CreateDialog_ExperimentControl(obj)
 			% If object already exists, show window
@@ -164,27 +162,9 @@ classdef OptogeneticsController < handle
 				'TooltipString', 'Reset Arduino (parameters will not be changed).',...
 				'Callback', {@OptogeneticsController.ArduinoReset, obj.Arduino}...
 			);
-%% --------------------------------------------------------------------------------------------
-%% NH 05/01/25 update - Added Chrimson Button
-% Stimulate Chrimson button - for use with Optogenetics Controller
+%% AH 3/16/18 update --------------------------------------------------------------------------
+			% Stimulate ChR2 button - for use with Optogenetics Controller
 			ctrlPosBase = button_reset.Position;
-			ctrlPos = [...
-				ctrlPosBase(1),...
-				ctrlPosBase(2) - buttonHeight - ctrlSpacing,...
-				buttonWidth,...	
-				buttonHeight...
-			];
-			button_UI_Chrimson = uicontrol(...
-				'Parent', dlg,...
-				'Style', 'pushbutton',...
-				'Position', ctrlPos,...
-				'String', 'Chrimson',...
-				'TooltipString', 'Stimulate Chrimson with UI parameters.',...
-				'Callback', {@OptogeneticsController.StimulateChrimson, obj.Arduino}...
-			);
-
-% Stimulate ChR2 button - for use with Optogenetics Controller
-			ctrlPosBase = button_UI_Chrimson.Position;
 			ctrlPos = [...
 				ctrlPosBase(1),...
 				ctrlPosBase(2) - buttonHeight - ctrlSpacing,...
@@ -197,8 +177,9 @@ classdef OptogeneticsController < handle
 				'Position', ctrlPos,...
 				'String', 'ChR2',...
 				'TooltipString', 'Stimulate ChR2 with UI parameters.',...
-                'Callback', {@OptogeneticsController.StimulateChR2, obj.Arduino}...
-             );
+				'Callback', {@OptogeneticsController.StimulateChR2, obj.Arduino}...
+			);
+%% --------------------------------------------------------------------------------------------
 %% AH 5/2/18 update --------------------------------------------------------------------------
 			% Optotag ChR2 button - for use with Optogenetics Controller
 			ctrlPosBase = button_UI_ChR2.Position;
@@ -213,44 +194,9 @@ classdef OptogeneticsController < handle
 				'Style', 'pushbutton',...
 				'Position', ctrlPos,...
 				'String', 'Optotag',...
-				'TooltipString', 'Run Optotagging Ladder.',...s
+				'TooltipString', 'Run Optotagging Ladder.',...
 				'Callback', {@OptogeneticsController.Optotag, obj.Arduino}...
 			);
-
-            % DanTag
-            ctrlPosBase = button_Optotag.Position;
-			ctrlPos = [...
-				ctrlPosBase(1),...
-				ctrlPosBase(2) - buttonHeight - ctrlSpacing,...
-				buttonWidth,...	
-				buttonHeight...
-			];
-			button_DanTag = uicontrol(...
-				'Parent', dlg,...
-				'Style', 'pushbutton',...
-				'Position', ctrlPos,...
-				'String', 'DanTag',...
-				'TooltipString', 'Run Optotagging Ladder.',...
-				'Callback', {@OptogeneticsController.DanTag, obj.Arduino}...
-			);
-
-            % Calibrate power levels for ChR2 and ChrimsonR
-            ctrlPosBase = button_DanTag.Position;
-			ctrlPos = [...
-				ctrlPosBase(1),...
-				ctrlPosBase(2) - buttonHeight - ctrlSpacing,...
-				buttonWidth,...	
-				buttonHeight...
-			];
-			% button_Calibrate = uicontrol(...
-			% 	'Parent', dlg,...
-			% 	'Style', 'pushbutton',...
-			% 	'Position', ctrlPos,...
-			% 	'String', 'Calibrate',...
-			% 	'TooltipString', 'Calibrate power levels.',...
-			% 	'Callback', @OptogeneticsController.Calibrate ...
-			% );
-
 %% --------------------------------------------------------------------------------------------
 
 
@@ -1671,154 +1617,15 @@ classdef OptogeneticsController < handle
 		function ArduinoReset(~, ~, arduino)
 			arduino.Reset()
 			fprintf('Reset.\n')
-        end
-        %% Nigel Chrimson Stimulation additions
-        function StimulateChrimson(~,~, arduino)
-            arduino.Chrimson()
-            fprintf('Stimulating Chrimson with UI parameters..\n')
-        end
+		end
 		function StimulateChR2(~, ~, arduino)
 			arduino.ChR2()
 			fprintf('Stimulating ChR2 with UI parameters...\n')
-        end
+		end
 		function Optotag(~, ~, arduino)
 			arduino.Optotag()
 			fprintf('Called Optotagging ladder...\n')
-        end
-        function DanTag(~, ~, arduino)
-			arduino.DanTag()
-			fprintf('Called Dan Tagging...\n')
-        end
-        % function Calibrate(~, ~)
-        %     calibrateChrimson( ...
-        %         targetPowers=[0.1, 0.2, 0.4, 1, 2, 4]*1e-4, ...
-        %         wavelengths=[555,0], ... 
-        %         stepDelays=[0.5, 0.5], ...
-        %         maxIters=64, ...
-        %         maxStationaryIters=4, ...
-        %         powerMeterThreshold=10e-6, ...
-        %         aoutMin=50, ...
-        %         stepSizeConst=500);
-        % 
-        % 
-        %     % Validate resutls
-        %     validateChrimson('validationDelay', 1);  % Wait 1 seconds before reading power
-        % 
-        %     % Load calibrated parameters
-        %     % ---
-        % 
-        %     %Save Red Calibration
-        %     saveCalibration(['GreenCalibration_' datestr(now, 'yyyymmdd')]);
-        % end
-        function loadCalibration(obj, filename)
-        % loadCalibration(filename)
-        % Loads saved calibration file and prints calibration type (Chrimson/ChR2/Both)
-        
-            if nargin < 2
-                [file, path] = uigetfile('*.mat', 'Select calibration file to load:');
-                if isequal(file, 0)
-                    fprintf('Calibration load cancelled.\n');
-                    return;
-                end
-                filename = fullfile(path, file);
-            end
-        
-            loaded = load(filename);
-            assert(isfield(loaded, 'Params') && isfield(loaded, 'Results'), ...
-                'File must contain both "Params" and "Results" variables.');
-        
-            obj.Params = loaded.Params;
-            obj.Results = loaded.Results;
-        
-            fprintf('✅ Calibration loaded from: %s\n', filename);
-            fprintf('  Number of target powers: %d\n', numel(obj.Params.targetPowers));
-        
-            if isfield(obj.Params, 'wavelengths')
-                fprintf('  Wavelengths: [%s] nm\n', strjoin(string(obj.Params.wavelengths), ', '));
-            end
-        
-            % --- Determine what was calibrated ---
-            result = obj.Results;
-            lasers = {'Chrimson', 'ChR2'};
-            active = false(1, 2);
-            for i = 1:2
-                if isfield(result, 'aoutValues') && size(result.aoutValues,2) >= i
-                    col = result.aoutValues(:,i);
-                    active(i) = any(col > 0 & ~isnan(col));
-                end
-            end
-        
-            if all(active)
-                fprintf('  Calibration type: Chrimson + ChR2 (both)\n');
-            elseif active(1)
-                fprintf('  Calibration type: Chrimson only\n');
-            elseif active(2)
-                fprintf('  Calibration type: ChR2 only\n');
-            else
-                fprintf('⚠️  Calibration file contains no valid AOUT values.\n');
-            end
-        end
-
-        function mergeCalibration(obj, fileChrimson, fileChR2)
-            % mergeCalibration(fileChrimson, fileChR2)
-            % Merges separate Chrimson and ChR2 calibration files into obj.Params and obj.Results
-        
-            % --- Load Files ---
-            assert(isfile(fileChrimson) && isfile(fileChR2), 'Both input files must exist.');
-            chr = load(fileChrimson);
-            chr2 = load(fileChR2);
-        
-            assert(isfield(chr, 'Params') && isfield(chr, 'Results'), 'Chrimson file missing Params or Results.');
-            assert(isfield(chr2, 'Params') && isfield(chr2, 'Results'), 'ChR2 file missing Params or Results.');
-        
-            % --- Validate Data ---
-            chrValid = any(chr.Results.aoutValues(:,1) > 0 & ~isnan(chr.Results.aoutValues(:,1)));
-            chr2Valid = any(chr2.Results.aoutValues(:,2) > 0 & ~isnan(chr2.Results.aoutValues(:,2)));
-        
-            assert(chrValid && ~any(chr.Results.aoutValues(:,2) > 0), ...
-                'Chrimson file must only contain values in column 1.');
-            assert(chr2Valid && ~any(chr2.Results.aoutValues(:,1) > 0), ...
-                'ChR2 file must only contain values in column 2.');
-        
-            % --- Chrimson Subset ---
-            chrP = chr.Params.targetPowers;
-            chrAOUT = chr.Results.aoutValues(:,1);
-            chrPower = chr.Results.powers(:,1);
-        
-            % --- ChR2 Subset ---
-            chr2P = chr2.Params.targetPowers;
-            chr2AOUT = chr2.Results.aoutValues(:,2);
-            chr2Power = chr2.Results.powers(:,2);
-        
-            % --- Determine max length for merged arrays ---
-            maxN = max(length(chrP), length(chr2P));
-            aoutValues = NaN(maxN, 2);
-            powers = NaN(maxN, 2);
-        
-            % --- Insert Chrimson values ---
-            aoutValues(1:length(chrP), 1) = chrAOUT;
-            powers(1:length(chrP), 1) = chrPower;
-        
-            % --- Insert ChR2 values ---
-            aoutValues(1:length(chr2P), 2) = chr2AOUT;
-            powers(1:length(chr2P), 2) = chr2Power;
-        
-            % --- Assign to object ---
-            obj.Params.wavelengths = [555, 465];  % Chrimson = laser 1, ChR2 = laser 2
-            obj.Params.targetPowers_Chrimson = chrP;
-            obj.Params.targetPowers_ChR2 = chr2P;
-            obj.Results.aoutValues = aoutValues;
-            obj.Results.powers = powers;
-        
-            % Optional: assign union for backward compatibility
-            obj.Params.targetPowers = unique([chrP(:); chr2P(:)], 'stable');
-        
-            fprintf('✅ Merged calibration loaded:\n');
-            fprintf('  Chrimson: %s (%d powers)\n', fileChrimson, numel(chrP));
-            fprintf('  ChR2:     %s (%d powers)\n', fileChR2, numel(chr2P));
-        end
-            
-            
+		end
 		function ArduinoClose(~, ~, obj)
 			selection = questdlg(...
 				'Close all windows and terminate connection with Arduino?',...
@@ -2133,10 +1940,6 @@ classdef OptogeneticsController < handle
 				tLong.EdgeColor = 'k';
 				uistack(tLong, 'top') % Bring to top
 			end
-        end
-
-        
-
-  
-    end     
+		end
+	end
 end
