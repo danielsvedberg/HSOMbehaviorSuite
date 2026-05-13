@@ -50,6 +50,8 @@ classdef ArduinoConnection < handle
     %Added from Lingfengs
     properties (Transient, Hidden)
         AnalogOutputEventIndex = 0
+        ScheduleBuffer = zeros(0, 2)   % [channel, aout] per trial; populated by '!' messages from OCI
+        ScheduleReceived = false
     end
 
 	events
@@ -452,6 +454,28 @@ classdef ArduinoConnection < handle
                         fprintf('\t\tANALOG_OUT: Channel %i set to %i.\n', channel, value)
                     end
                     
+                case '!'
+                    % OCI sent a trial schedule entry or schedule boundary marker
+                    % "! BEGIN nTrials" | "! END" | "! idx channel aout"
+                    subStrings = strsplit(strtrim(value), ' ');
+                    keyword = strtrim(subStrings{1});
+                    if strcmpi(keyword, 'BEGIN')
+                        nSched = str2double(strtrim(subStrings{2}));
+                        obj.ScheduleBuffer = zeros(nSched, 2);
+                        obj.ScheduleReceived = false;
+                    elseif strcmpi(keyword, 'END')
+                        obj.ScheduleReceived = true;
+                        if obj.DebugMode
+                            fprintf('OCI schedule received: %d trials.\n', size(obj.ScheduleBuffer, 1));
+                        end
+                    else
+                        idx = str2double(keyword) + 1;  % 0-indexed Arduino → 1-indexed MATLAB
+                        channel = str2double(strtrim(subStrings{2}));
+                        aout    = str2double(strtrim(subStrings{3}));
+                        if ~isempty(obj.ScheduleBuffer) && idx >= 1 && idx <= size(obj.ScheduleBuffer, 1)
+                            obj.ScheduleBuffer(idx, :) = [channel, aout];
+                        end
+                    end
 				% case 'R'
 				% 	fprintf('\nArduino received stimulation command.\n')
 				otherwise

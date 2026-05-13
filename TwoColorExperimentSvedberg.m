@@ -45,15 +45,15 @@ classdef TwoColorExperimentSvedberg < handle
             obj.LaserArduino.DebugMode = debug;
 
             requiredParams = [ ...
-                {'_DEBUG','OPTO_ENABLED','CANCEL_ENABLED','CHRIMSON_NUM_PULSES', 'CHRIMSON_PULSE_WIDTH', 'CHRIMSON_IPI'}, ...
+                {'_DEBUG','OPTO_ENABLED','CANCEL_ENABLED'}, ...
+                {'CHRIMSON_NUM_PULSES', 'CHRIMSON_PULSE_WIDTH', 'CHRIMSON_IPI'}, ...
                 {'CHR2_NUM_PULSES', 'CHR2_PULSE_WIDTH', 'CHR2_IPI'}, ...
                 {'CHRIMSON_CHR2_NUM_PULSES','CHRIMSON_CHR2_PULSE_WIDTH','CHRIMSON_CHR2_IPI'}, ...
                 {'CHRIMSON_AOUT_1_VALUE', 'CHRIMSON_AOUT_2_VALUE', 'CHRIMSON_AOUT_3_VALUE'}, ...
                 {'CHRIMSON_AOUT_4_VALUE', 'CHRIMSON_AOUT_5_VALUE', 'CHRIMSON_AOUT_6_VALUE'}, ...
                 {'CHR2_AOUT_1_VALUE', 'CHR2_AOUT_2_VALUE', 'CHR2_AOUT_3_VALUE'}, ...
-                {'CHR2_AOUT_4_VALUE', 'CHR2_AOUT_5_VALUE', 'CHR2_AOUT_6_VALUE'}, ....
-                {'STIM_TRAIN_DELAY','PHOTOMETRY_ON','PHOT_TOGGLE_DELAY'}, ...
-                {'CHRIMSON_TRAINS_BEFORE_CHR2','CHRIMSON_TRAINS_AFTER_CHR2','CHR2_NUM_TRAINS'}
+                {'CHR2_AOUT_4_VALUE', 'CHR2_AOUT_5_VALUE', 'CHR2_AOUT_6_VALUE'}, ...
+                {'N_TRIALS_PER_BLOCK', 'N_STIM_PER_BLOCK', 'N_BLOCKS'} ...
             ];
 
             fprintf('Waiting for parameter sync from Arduino...\n');
@@ -116,7 +116,7 @@ classdef TwoColorExperimentSvedberg < handle
         
             % Pre-train delay
             if isempty(r.preTrainDelay)
-                r.preTrainDelay = obj.getParamValue('STIM_TRAIN_DELAY') / 1000;
+                r.preTrainDelay = 0;
             end
             pause(r.preTrainDelay);
         
@@ -136,7 +136,7 @@ classdef TwoColorExperimentSvedberg < handle
         
             % Post-train delay
             if isempty(r.postTrainDelay)
-                r.postTrainDelay = obj.getParamValue('STIM_TRAIN_DELAY') / 1000;
+                r.postTrainDelay = 0;
             end
             pause(r.postTrainDelay);
         
@@ -465,10 +465,11 @@ classdef TwoColorExperimentSvedberg < handle
                 p = p.Results;
                 obj.Params = p;
             
-                % --- Enforce exactly 6 strictly increasing powers ---
-                assert(length(p.targetPowers) == 6, 'Chrimson calibration requires exactly 6 targetPowers.');
-                assert(issorted(p.targetPowers) && all(diff(p.targetPowers) > 0), ...
-                    'targetPowers must be strictly increasing.');
+                assert(length(p.targetPowers) >= 1 && length(p.targetPowers) <= 6, ...
+                    'Chrimson calibration requires 1–6 targetPowers.');
+                nonZero = p.targetPowers(p.targetPowers > 0);
+                assert(isempty(nonZero) || (issorted(nonZero) && all(diff(nonZero) > 0)), ...
+                    'Non-zero targetPowers must be strictly increasing.');
             
                 iLaser = 1;  % Chrimson
                 nPowers = length(p.targetPowers);
@@ -500,8 +501,14 @@ classdef TwoColorExperimentSvedberg < handle
                 for iPower = 1:nPowers
                     obj.analogWrite(iLaser, 0);
             
-                    % Reuse previous AOUT or ramp-up to detect light
-                    if iPower == 1
+                    % Skip 0-power targets — set AOUT to 0 and move on
+                    if p.targetPowers(iPower) == 0
+                        results.aoutValues(iPower, iLaser) = 0;
+                        continue;
+                    end
+
+                    % Ramp-up for first target or when previous slot was 0 (skipped)
+                    if iPower == 1 || results.aoutValues(iPower - 1, iLaser) == 0
                         aoutValue = p.aoutMin;
                         stepUp = 50;
                         pwr = 0;
@@ -629,8 +636,11 @@ classdef TwoColorExperimentSvedberg < handle
                 p = p.Results;
                 obj.Params = p;
             
-                assert(issorted(p.targetPowers) && all(diff(p.targetPowers) > 0), ...
-                    'targetPowers must be strictly increasing for progressive calibration.');
+                assert(length(p.targetPowers) >= 1 && length(p.targetPowers) <= 6, ...
+                    'ChR2 calibration requires 1–6 targetPowers.');
+                nonZero = p.targetPowers(p.targetPowers > 0);
+                assert(isempty(nonZero) || (issorted(nonZero) && all(diff(nonZero) > 0)), ...
+                    'Non-zero targetPowers must be strictly increasing.');
             
                 iLaser = 2;  % ChR2
                 nPowers = length(p.targetPowers);
@@ -661,8 +671,14 @@ classdef TwoColorExperimentSvedberg < handle
                 for iPower = 1:nPowers
                     obj.analogWrite(iLaser, 0);
             
-                    % Reuse previous AOUT for faster convergence
-                    if iPower == 1
+                    % Skip 0-power targets — set AOUT to 0 and move on
+                    if p.targetPowers(iPower) == 0
+                        results.aoutValues(iPower, iLaser) = 0;
+                        continue;
+                    end
+
+                    % Ramp-up for first target or when previous slot was 0 (skipped)
+                    if iPower == 1 || results.aoutValues(iPower - 1, iLaser) == 0
                         aoutValue = p.aoutMin;
             
                         % Stepwise DAC ramp-up (only for first power target)
@@ -950,108 +966,6 @@ classdef TwoColorExperimentSvedberg < handle
                 fprintf('Saved calibration data to: %s\n', filename);
             end
 
-            function runOptoLadder(obj, laserLabel, chr2Aout)
-                % runOptoLadder('ChR2', 300)
-                % Sets 5 sorted calibrated Chrimson AOUTs, sets manual ChR2 AOUT,
-                % triggers opto_ladder_state(), and logs all settings.
-            
-                % --- Validate input ---
-                assert(ischar(laserLabel) || isstring(laserLabel), ...
-                    'First input must be "ChR2"');
-                laserLabel = lower(string(laserLabel));
-                assert(strcmp(laserLabel, "chr2"), ...
-                    'Only ChR2 AOUT is set manually. Chrimson values come from calibration.');
-                assert(isscalar(chr2Aout) && isnumeric(chr2Aout), ...
-                    'Second input must be numeric ChR2 AOUT value.');
-            
-                % --- Validate calibration ---
-                assert(isfield(obj.Params, 'targetPowers'), 'No calibrated targetPowers found.');
-                assert(isfield(obj.Params, 'targetPowers_Chrimson') && ...
-                   length(obj.Params.targetPowers_Chrimson) == 5, ...
-                   'Expected exactly 5 Chrimson calibration targetPowers.');
-
-            
-                % --- Sort Chrimson powers and assign AOUTs ---
-                chrimsonPowers_mW = sort(obj.Params.targetPowers_Chrimson * 1e3);  % ascending
-                assignedAOUTs = zeros(1, 5);
-                for i = 1:5
-                    aout = obj.getAoutFor(1, chrimsonPowers_mW(i));
-                    paramName = sprintf('CHRIMSON_AOUT_%d_VALUE', i);
-                    obj.setParam('laser', paramName, aout);
-                    assignedAOUTs(i) = aout;
-                    fprintf('Set %s = %d (%.1f mW)\n', paramName, aout, chrimsonPowers_mW(i));
-                end
-            
-                % --- Set ChR2 AOUT manually ---
-                obj.setParam('laser', 'CHR2_AOUT_VALUE', round(chr2Aout));
-                fprintf('Set CHR2_AOUT_VALUE = %d (manual)\n', round(chr2Aout));
-            
-                % --- Read stim protocol structure values from Arduino ---
-                before = obj.getParamValue('CHRIMSON_TRAINS_BEFORE_CHR2');
-                after  = obj.getParamValue('CHRIMSON_TRAINS_AFTER_CHR2');
-                nChR2  = obj.getParamValue('CHR2_NUM_TRAINS');
-                delay  = obj.getParamValue('STIM_TRAIN_DELAY');
-            
-                % --- Push parameters and trigger ---
-                obj.LaserArduino.SendMessage('O');
-                obj.LaserArduino.SendMessage('L');
-            
-                % --- Display summary ---
-                fprintf('✅ Opto ladder triggered with:\n');
-                fprintf('  ChR2 AOUT = %d\n', round(chr2Aout));
-                for i = 1:5
-                    fprintf('  Chrimson AOUT #%d = %d (%.1f mW)\n', i, assignedAOUTs(i), chrimsonPowers_mW(i));
-                end
-                fprintf('  Train Structure: ChrimsonBefore=%d, ChR2=%d, ChrimsonAfter=%d\n', before, nChR2, after);
-                fprintf('  Stim Train Delay: %.1f ms\n', delay);
-            
-                % --- Log all parameters ---
-                logEntry = struct();
-                logEntry.timestamp = datetime();
-                logEntry.type = 'opto_ladder';
-                logEntry.chr2Aout = round(chr2Aout);
-                logEntry.chrimsonPowers_mW = chrimsonPowers_mW;
-                logEntry.chrimsonAouts = assignedAOUTs;
-                logEntry.chrimsonTrainsBefore = before;
-                logEntry.chrimsonTrainsAfter = after;
-                logEntry.chr2Trains = nChR2;
-                logEntry.stimTrainDelayMs = delay;
-            
-                if isempty(obj.Log)
-                    obj.Log = {logEntry};
-                elseif isstruct(obj.Log)
-                    obj.Log = [{obj.Log}, {logEntry}];  % Convert existing struct to cell array
-                else
-                    obj.Log{end+1} = logEntry;
-                end
-
-            end
-            function printLastOptoLadderLog(obj)
-            % Print a summary of the most recent opto_ladder run from the log
-        
-            if isempty(obj.Log)
-                fprintf('⚠️  No log entries found.\n');
-                return;
-            end
-        
-            last = obj.Log(end);
-        
-            if ~isfield(last, 'type') || ~strcmp(last.type, 'opto_ladder')
-                fprintf('⚠️  Last log entry is not from opto_ladder.\n');
-                return;
-            end
-        
-            fprintf('\n🧪 Last Opto Ladder Run Summary:\n');
-            fprintf('  Timestamp:        %s\n', datestr(last.timestamp, 'yyyy-mm-dd HH:MM:SS'));
-            fprintf('  ChR2 AOUT:        %d\n', last.chr2Aout);
-            fprintf('  Chrimson Powers:  %s mW\n', strjoin(string(last.chrimsonPowers_mW), ', '));
-            fprintf('  Chrimson AOUTs:   %s\n', strjoin(string(last.chrimsonAouts), ', '));
-            fprintf('  Trains Before:    %d\n', last.chrimsonTrainsBefore);
-            fprintf('  ChR2 Trains:      %d\n', last.chr2Trains);
-            fprintf('  Trains After:     %d\n', last.chrimsonTrainsAfter);
-            fprintf('  Stim Delay (ms):  %.1f\n', last.stimTrainDelayMs);
-            fprintf('✅\n\n');
-            end
 
             function loadCalibration(obj, filename)
                 % loadCalibration(filename)
@@ -1117,14 +1031,14 @@ classdef TwoColorExperimentSvedberg < handle
                        aoutnames = oc_paramnames(aoutidxs);
                        calvals = result.aoutValues(:,i);
                        nvals = length(calvals);
-                       if nvals == sum(aoutidxs)
-                           for j = 1:nvals
-                               paramId = aoutnames{j};
+                       % Always push all 6 AOUT slots; pad with 0 for uncalibrated/skipped slots
+                       nAout = sum(aoutidxs);
+                       for j = 1:nAout
+                           value = 0;
+                           if j <= nvals && ~isnan(calvals(j))
                                value = calvals(j);
-                               obj.LaserInterface.SetParam(paramId, value)
                            end
-                       else
-                           fprintf('error, number of calibration values does not match number of aout values')
+                           obj.LaserInterface.SetParam(aoutnames{j}, value);
                        end
                    end
                end
@@ -1194,6 +1108,85 @@ classdef TwoColorExperimentSvedberg < handle
             
             
 
-          
+
+        function startStimOnCommand(obj, varargin)
+            % startStimOnCommand() — push block-structure params and start the
+            % stim-on-command session. OCI generates its own trial schedule and
+            % enters WAIT_REQUEST_STATE, where it responds to PIN_STIM_REQ signals
+            % from the VLD arduino.
+            %
+            % Optional name-value args:
+            %   'nBlocks'          (default 30) — total number of blocks
+            %   'nTrialsPerBlock'  (default 6)  — total trials per block
+            %   'nStimPerBlock'    (default 2)  — stimulated trials per block
+            %                                     (rest are no-stim; 1 chrimson +
+            %                                      1 chr2 when even, alternating
+            %                                      extra channel when odd)
+            %
+            % AOUT values are not set here; run loadCalibration() first so that
+            % CHRIMSON_AOUT_X_VALUE / CHR2_AOUT_X_VALUE params are already on OCI.
+
+            p = inputParser();
+            p.addParameter('nBlocks',         30, @(x) isnumeric(x) && x >= 1);
+            p.addParameter('nTrialsPerBlock',   6, @(x) isnumeric(x) && x >= 1);
+            p.addParameter('nStimPerBlock',     2, @(x) isnumeric(x) && x >= 0);
+            p.parse(varargin{:});
+            r = p.Results;
+
+            assert(r.nStimPerBlock <= r.nTrialsPerBlock, ...
+                'nStimPerBlock (%d) cannot exceed nTrialsPerBlock (%d).', ...
+                r.nStimPerBlock, r.nTrialsPerBlock);
+
+            obj.setParam('laser', 'N_BLOCKS',          r.nBlocks);
+            obj.setParam('laser', 'N_TRIALS_PER_BLOCK', r.nTrialsPerBlock);
+            obj.setParam('laser', 'N_STIM_PER_BLOCK',  r.nStimPerBlock);
+            obj.LaserArduino.SendMessage('O');  % param update complete
+
+            obj.LaserArduino.ScheduleReceived = false;  % reset before sending 'G'
+            obj.LaserArduino.SendMessage('G');  % OCI generates schedule + enters WAIT_REQUEST
+
+            fprintf('StimOnCommand started: %d blocks, %d trials/block, %d stim/block.\n', ...
+                r.nBlocks, r.nTrialsPerBlock, r.nStimPerBlock);
+            fprintf('Waiting for trial schedule from OCI...\n');
+
+            % Wait for OCI to transmit the full schedule
+            timeout = tic;
+            while ~obj.LaserArduino.ScheduleReceived
+                pause(0.05);
+                if toc(timeout) > 60
+                    warning('Timed out waiting for trial schedule. Schedule not saved.');
+                    return;
+                end
+            end
+
+            sched = obj.LaserArduino.ScheduleBuffer;
+            nTrials = size(sched, 1);
+            fprintf('Schedule received: %d trials.\n', nTrials);
+
+            % Build schedule table
+            channelLabels = {'no-stim', 'Chrimson', 'ChR2'};
+            channelName = cellfun(@(c) channelLabels{c + 1}, num2cell(sched(:, 1)), 'UniformOutput', false);
+            scheduleTable = table(...
+                (1:nTrials)', sched(:, 1), sched(:, 2), channelName, ...
+                'VariableNames', {'TrialIndex', 'Channel', 'AOUT', 'ChannelName'});
+
+            % Derive save path from obj.Path; fall back to cwd if not set
+            if isempty(obj.Path)
+                schedBase = fullfile(pwd, sprintf('schedule_%s', datestr(now, 'yyyymmdd_HHMMSS')));
+            else
+                [savePath, saveBase, ~] = fileparts(obj.Path);
+                schedBase = fullfile(savePath, [saveBase, '_schedule']);
+            end
+            writetable(scheduleTable, [schedBase, '.csv']);
+            save([schedBase, '.mat'], 'scheduleTable');
+            fprintf('Trial schedule saved:\n  %s.csv\n  %s.mat\n', schedBase, schedBase);
+        end
+
+        function stopStimOnCommand(obj)
+            % Send quit command — OCI turns off all outputs and returns to IDLE.
+            obj.LaserArduino.SendMessage('Q');
+            fprintf('StimOnCommand stopped. OCI returned to IDLE.\n');
+        end
+
         end
 end
