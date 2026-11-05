@@ -100,7 +100,7 @@ classdef MouseBehaviorInterface < handle
 				'RowName', obj.Arduino.ParamNames,...
 				'ColumnName', {'Value'},...
 				'ColumnFormat', {'long'},...
-				'ColumnEditable', [true],...
+				'ColumnEditable', true,...
 				'CellEditCallback', {@MouseBehaviorInterface.OnParamChangedViaGUI, obj.Arduino}...
 			);
 			dlg.UserData.Ctrl.Table_Params = table_params;
@@ -743,40 +743,40 @@ classdef MouseBehaviorInterface < handle
 			dlg.Visible = 'on';
 		end
 
-		function CreateDialog_Splash(obj)
-			% Load image
-			[fncpath, ~, ~] = fileparts(which('MouseBehaviorInterface'));
-			img = imread([fncpath, '\logo.png']);
+        function CreateDialog_Splash(obj)
+        	% Load image (ImageIcon reads the file directly, no im2java needed)
+        	fncpath = fileparts(which('MouseBehaviorInterface'));
+        	icon = javax.swing.ImageIcon(fullfile(fncpath, 'logo.png'));
 
-			% Create java window object
-			splashImage = im2java(img);
-			win = javax.swing.JWindow;
-			obj.Rsc.Splash = win;
-			icon = javax.swing.ImageIcon(splashImage);
-			label = javax.swing.JLabel(icon);
-			win.getContentPane.add(label);
-			win.setAlwaysOnTop(true);
-			win.pack;
+        	% Create java window object
+        	win = javax.swing.JWindow;
+        	obj.Rsc.Splash = win;
+        	label = javax.swing.JLabel(icon);
+        	win.getContentPane.add(label);
+        	win.setAlwaysOnTop(true);
+        	win.pack;
 
-			% Set the splash image to the center of the screen
-			screenSize = win.getToolkit.getScreenSize;
-			screenHeight = screenSize.height;
-			screenWidth = screenSize.width;
-			% Get the actual splashImage size
-			imgHeight = icon.getIconHeight;
-			imgWidth = icon.getIconWidth;
-			win.setLocation((screenWidth-imgWidth)/2,(screenHeight-imgHeight)/2);
+        	% Set the splash image to the center of the screen
+        	screenSize = win.getToolkit.getScreenSize;
+        	screenHeight = screenSize.height;
+        	screenWidth = screenSize.width;
 
-			% Show the splash screen
-			win.show
+        	% Get the actual splashImage size
+        	imgHeight = icon.getIconHeight;
+        	imgWidth = icon.getIconWidth;
+        	win.setLocation(floor((screenWidth - imgWidth)/2), floor((screenHeight - imgHeight)/2));
 
-			% Hide in 10 seconds
-			t = timer;
-			obj.Rsc.SplashTimer = t;
-			t.StartDelay = 10;
-			t.TimerFcn = @(~, ~) win.dispose;
-			start(t)
-		end
+        	% Show the splash screen
+        	win.setVisible(true)
+
+        	% Hide in 10 seconds
+        	t = timer;
+        	obj.Rsc.SplashTimer = t;
+        	t.StartDelay = 10;
+        	t.TimerFcn = @(~, ~) win.dispose;
+        	t.StopFcn  = @(src, ~) delete(src);
+        	start(t)
+        end
 
 		function CloseDialog_Splash(obj)
 			stop(obj.Rsc.SplashTimer);
@@ -1665,13 +1665,7 @@ classdef MouseBehaviorInterface < handle
 			ax.UserData.cdf_nostim.f 		= cdf_nostim.f;
 			ax.UserData.cdf_nostim.x 		= cdf_nostim.x;
 			ax.UserData.FigName 			= figName;
-		end
-
-
-
-
-
-
+        end
 
 
 

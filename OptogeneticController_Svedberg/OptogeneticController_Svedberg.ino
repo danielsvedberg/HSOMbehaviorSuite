@@ -187,7 +187,7 @@ float _params[_NUM_PARAMS] = {
   5,     // CHR2_PULSE_WIDTH (ms)
   35,    // CHR2_IPI (ms)
 
-  200,   // CHRIMSON_CHR2_NUM_PULSES
+  200,   // CHRIMSON_CHR2_NUM_PULSES  (DanTag: TOTAL pulses, split evenly across all nonzero intensities)
   100,   // CHRIMSON_CHR2_PULSE_WIDTH (ms)
   2900,  // CHRIMSON_CHR2_IPI (ms)
 
@@ -242,11 +242,15 @@ unsigned long ipiTimer     = 0;
 unsigned long chR2ipiTimer = 0;
 
 // --- DanTag state ---
-int   chrimsonidx = 0;
-int   chr2idx     = 0;
-bool  dingdong    = false;
-float chrimsonLadder[6];
-float chr2Ladder[6];
+int   chrimsonidx   = 0;   // index into chrimson ladder within the current trial
+int   chr2idx       = 0;   // index into chr2 ladder within the current trial
+bool  dingdong      = false; // false = chrimson phase, true = chr2 phase
+float chrimsonLadder[6];    // compacted nonzero Chrimson AOUT levels (ascending)
+float chr2Ladder[6];        // compacted nonzero ChR2 AOUT levels (ascending)
+int   nChrNonzero   = 0;    // count of nonzero Chrimson intensities
+int   nChr2Nonzero  = 0;    // count of nonzero ChR2 intensities
+int   nDanTagTrials = 0;    // ladder cycles = round(total pulses / combined intensities)
+int   danTagTrial   = 0;    // current trial (ladder cycle) index
 
 // --- Trial schedule ---
 struct TrialScheduleEntry {
@@ -568,22 +572,47 @@ void dan_tag_state() {
   if (_state != _prevState) {
     _prevState  = _state;
     sendMessage("$" + String(_state));
-    pulseIndex  = 0;
     chrimsonidx = 0;
     chr2idx     = 0;
-    currentAout = 0;
+    danTagTrial = 0;
     inPulse     = false;
     dingdong    = false;
+    ipiTimer    = millis();
 
-    for (int i = 0; i < 6; i++) chrimsonLadder[i] = _params[CHRIMSON_AOUT_1_VALUE + i];
-    for (int i = 0; i < 6; i++) chr2Ladder[i]     = _params[CHR2_AOUT_1_VALUE + i];
+    // Build compacted ladders of nonzero intensities only (preserves AOUT_1..6 order)
+    nChrNonzero = 0;
+    for (int i = 0; i < 6; i++) {
+      float v = _params[CHRIMSON_AOUT_1_VALUE + i];
+      if (v > 0) chrimsonLadder[nChrNonzero++] = v;
+    }
+    nChr2Nonzero = 0;
+    for (int i = 0; i < 6; i++) {
+      float v = _params[CHR2_AOUT_1_VALUE + i];
+      if (v > 0) chr2Ladder[nChr2Nonzero++] = v;
+    }
 
-    if (_params[_DEBUG]) sendMessage("DanTag started.");
+    int nCombined = nChrNonzero + nChr2Nonzero;
+    if (nCombined == 0) {
+      sendMessage("WARNING: DanTag has no nonzero AOUT intensities. Aborting.");
+      _state = IDLE_STATE;
+      return;
+    }
+
+    // CHRIMSON_CHR2_NUM_PULSES is the TOTAL pulse budget, divided evenly across all
+    // nonzero intensities. Each trial delivers one pulse per intensity (chrimson ladder
+    // then chr2 ladder), so the number of trials = total pulses / combined intensity count.
+    nDanTagTrials = (int)round((float)_params[CHRIMSON_CHR2_NUM_PULSES] / (float)nCombined);
+    if (nDanTagTrials < 1) nDanTagTrials = 1;
+
+    if (_params[_DEBUG]) {
+      sendMessage("DanTag started: " + String(nDanTagTrials) + " trials x " +
+                  String(nCombined) + " pulses/trial (" + String(nChrNonzero) +
+                  " chrimson + " + String(nChr2Nonzero) + " chr2) = " +
+                  String(nDanTagTrials * nCombined) + " pulses total.");
+    }
   }
 
-  // Done when chr2 phase has exhausted all 6 AOUT levels
-  bool danTagDone = (dingdong && chr2idx >= 6);
-  if (!danTagDone) {
+  if (danTagTrial < nDanTagTrials) {
     runChR2ChrimsonPulses();
   } else {
     sendMessage("R");
@@ -842,47 +871,54 @@ void runChR2Train() {
   }
 }
 
-// DanTag: all CHRIMSON_CHR2_NUM_PULSES pulses at each Chrimson AOUT level (escalating),
-// then all pulses at each ChR2 AOUT level. dingdong=false → chrimson phase, true → chr2 phase.
+// DanTag: one pulse per nonzero intensity per trial — ascending Chrimson ladder, then
+// ascending ChR2 ladder — repeated for nDanTagTrials trials. dingdong=false → chrimson
+// phase, true → chr2 phase. Total pulses ≈ CHRIMSON_CHR2_NUM_PULSES, split across intensities.
 void runChR2ChrimsonPulses() {
   if (checkQuit()) { setChrimsonPower(0); setChR2Power(0); return; }
 
-  // Switch to chr2 phase once all 6 chrimson AOUT levels are done
-  if (!dingdong && chrimsonidx >= 6) {
-    dingdong   = true;
-    pulseIndex = 0;
+  // Between pulses, advance past an exhausted (or empty) phase before firing the next one
+  if (!inPulse) {
+    if (!dingdong && chrimsonidx >= nChrNonzero) {
+      dingdong = true;   // chrimson ladder done → chr2 phase
+      chr2idx  = 0;
+    }
+    if (dingdong && chr2idx >= nChr2Nonzero) {
+      // chr2 ladder done → this trial (one full chrimson+chr2 cycle) is complete
+      if (_params[_DEBUG])
+        sendMessage("DanTag: trial " + String(danTagTrial + 1) + " complete.");
+      danTagTrial++;
+      dingdong    = false;
+      chrimsonidx = 0;
+      chr2idx     = 0;
+      return;  // let dan_tag_state re-check completion before firing the next pulse
+    }
   }
 
-  if (!inPulse && pulseIndex < (int)_params[CHRIMSON_CHR2_NUM_PULSES] &&
-      (millis() - ipiTimer >= (unsigned long)_params[CHRIMSON_CHR2_IPI])) {
+  // Start a pulse once the inter-pulse interval has elapsed
+  if (!inPulse && (millis() - ipiTimer >= (unsigned long)_params[CHRIMSON_CHR2_IPI])) {
     if (!dingdong) setChrimsonPower(chrimsonLadder[chrimsonidx]);
     else           setChR2Power(chr2Ladder[chr2idx]);
     pulseTimer = millis();
     inPulse    = true;
-    if (_params[_DEBUG]) sendMessage("DanTag pulse " + String(pulseIndex + 1) + " ON");
+    if (_params[_DEBUG]) {
+      if (!dingdong)
+        sendMessage("DanTag T" + String(danTagTrial + 1) + " Chrimson rung " +
+                    String(chrimsonidx + 1) + " ON");
+      else
+        sendMessage("DanTag T" + String(danTagTrial + 1) + " ChR2 rung " +
+                    String(chr2idx + 1) + " ON");
+    }
   }
 
+  // End the pulse after the pulse width, then advance one rung
   if (inPulse && (millis() - pulseTimer >= (unsigned long)_params[CHRIMSON_CHR2_PULSE_WIDTH])) {
     setChrimsonPower(0);
     setChR2Power(0);
     inPulse  = false;
     ipiTimer = millis();
-    pulseIndex++;
-    if (_params[_DEBUG]) sendMessage("DanTag pulse " + String(pulseIndex) + " OFF");
-
-    // After completing all pulses at this AOUT level, advance to the next
-    if (pulseIndex >= (int)_params[CHRIMSON_CHR2_NUM_PULSES]) {
-      pulseIndex = 0;
-      if (!dingdong) {
-        if (_params[_DEBUG])
-          sendMessage("DanTag: Chrimson AOUT " + String(chrimsonidx + 1) + " complete.");
-        chrimsonidx++;
-      } else {
-        if (_params[_DEBUG])
-          sendMessage("DanTag: ChR2 AOUT " + String(chr2idx + 1) + " complete.");
-        chr2idx++;
-      }
-    }
+    if (!dingdong) chrimsonidx++;
+    else           chr2idx++;
   }
 }
 
